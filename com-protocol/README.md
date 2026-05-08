@@ -24,17 +24,17 @@ API for easy wrapping from Python via cffi or ctypes.
 [ LEN | SRC | DST | FLAGS | SESSION | SEQ_HI | SEQ_LO | FAMILY | TYPE | PAYLOAD... | CRC_HI | CRC_LO ]
 ```
 
-- `LEN` (1 byte) — counts everything that follows, up to and including CRC.
-- `SRC`, `DST` (1 byte each) — node addresses. See `arc_protocol.h` for assignments.
-- `FLAGS` (1 byte) — RELIABLE, URGENT, ACK, plus reserved bits.
-- `SESSION` (1 byte) — increments on each reboot of the source node.
+- `LEN` (1 byte) - counts everything that follows, up to and including CRC.
+- `SRC`, `DST` (1 byte each) - node addresses. See `arc_protocol.h` for assignments.
+- `FLAGS` (1 byte) - RELIABLE, URGENT, ACK, plus reserved bits.
+- `SESSION` (1 byte) - increments on each reboot of the source node.
   Receivers reset dedup state when SESSION changes.
-- `SEQ` (2 bytes, big-endian) — sequence number, scoped to the
+- `SEQ` (2 bytes, big-endian) - sequence number, scoped to the
   (SRC, DST, SESSION) tuple.
-- `FAMILY` (1 byte) — protocol family (NETMGMT, FC_COORD, VIDEO, FC_VIDEO).
-- `TYPE` (1 byte) — message type within the family.
-- `PAYLOAD` — variable, up to 241 bytes.
-- `CRC` (2 bytes, big-endian) — CRC-16/CCITT-FALSE over LEN through end-of-payload.
+- `FAMILY` (1 byte) - protocol family (NETMGMT, FC_COORD, VIDEO, FC_VIDEO).
+- `TYPE` (1 byte) - message type within the family.
+- `PAYLOAD` - variable, up to 241 bytes.
+- `CRC` (2 bytes, big-endian) - CRC-16/CCITT-FALSE over LEN through end-of-payload.
 
 Total overhead: 11 bytes. Maximum payload that fits in a 255-byte radio
 frame after COBS encoding: **241 bytes**.
@@ -43,6 +43,15 @@ frame after COBS encoding: **241 bytes**.
 
 ```
 make test       # builds and runs the unit tests
+make vectors    # builds and prints canonical test vectors
+```
+
+## Layout
+
+```
+src/        protocol library used by firmware and host tools
+test/       host-side unit tests
+examples/   small utilities, including test vector generation
 ```
 
 ## Using from C / Arduino
@@ -94,7 +103,7 @@ set of inputs. The Python implementation (when written) must produce
 byte-identical output for the same inputs. Run:
 
 ```
-make build/gen_vectors
+make vectors
 ./build/gen_vectors > test_vectors.txt
 ```
 

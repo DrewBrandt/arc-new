@@ -41,6 +41,7 @@ uint16_t arc_crc16(const uint8_t* data, size_t len)
 // ----------------------------------------------------------------------
 int arc_cobs_encode(const uint8_t* in, size_t len, uint8_t* out, size_t out_capacity)
 {
+    if (out == NULL || (in == NULL && len > 0)) return ARC_ERR_BAD_ARG;
     if (out_capacity < len + 2) {
         return ARC_ERR_BUFFER;
     }
@@ -83,6 +84,7 @@ int arc_cobs_encode(const uint8_t* in, size_t len, uint8_t* out, size_t out_capa
 // ----------------------------------------------------------------------
 int arc_cobs_decode(const uint8_t* in, size_t len, uint8_t* out, size_t out_capacity)
 {
+    if (in == NULL || out == NULL) return ARC_ERR_BAD_ARG;
     if (len < 2) return ARC_ERR_BAD_COBS;
     if (in[len - 1] != 0x00) return ARC_ERR_BAD_COBS;
 
@@ -125,6 +127,7 @@ int arc_frame_build(uint8_t* out, size_t out_capacity,
                     uint8_t family, uint8_t type,
                     const uint8_t* payload, size_t payload_len)
 {
+    if (out == NULL || (payload == NULL && payload_len > 0)) return ARC_ERR_BAD_ARG;
     if (payload_len > ARC_MAX_PAYLOAD_SIZE) return ARC_ERR_TOO_LONG;
     size_t total = ARC_OVERHEAD + payload_len;
     if (out_capacity < total) return ARC_ERR_BUFFER;
@@ -154,6 +157,7 @@ int arc_frame_build(uint8_t* out, size_t out_capacity,
 
 arc_result_t arc_frame_parse(const uint8_t* in, size_t len, arc_frame_t* frame)
 {
+    if (in == NULL || frame == NULL) return ARC_ERR_BAD_ARG;
     if (len < ARC_OVERHEAD) return ARC_ERR_TOO_SHORT;
     if (len > ARC_MAX_FRAME_SIZE) return ARC_ERR_TOO_LONG;
 
@@ -187,6 +191,8 @@ int arc_frame_build_ack(uint8_t* out, size_t out_capacity,
                         const arc_frame_t* original,
                         uint8_t my_session, uint16_t my_seq)
 {
+    if (original == NULL) return ARC_ERR_BAD_ARG;
+
     // Ack payload: the SEQ being acked, big-endian.
     uint8_t ack_payload[2];
     ack_payload[0] = (uint8_t)(original->seq >> 8);

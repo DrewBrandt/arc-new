@@ -257,6 +257,15 @@ TEST(frame_buffer_too_small)
     ASSERT_EQ(n, ARC_ERR_BUFFER);
 }
 
+TEST(frame_null_payload_rejected)
+{
+    uint8_t frame[32];
+    int n = arc_frame_build(frame, sizeof(frame),
+                            1, 2, 0, 0, 0, 0, 0,
+                            NULL, 1);
+    ASSERT_EQ(n, ARC_ERR_BAD_ARG);
+}
+
 TEST(frame_corrupted_crc_detected)
 {
     const uint8_t payload[] = {1, 2, 3};
@@ -424,6 +433,7 @@ int main(void)
     RUN(frame_max_payload);
     RUN(frame_oversized_rejected);
     RUN(frame_buffer_too_small);
+    RUN(frame_null_payload_rejected);
     RUN(frame_corrupted_crc_detected);
     RUN(frame_corrupted_header_detected);
     RUN(frame_bad_length_detected);

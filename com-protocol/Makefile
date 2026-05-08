@@ -7,16 +7,23 @@ CFLAGS  += -Isrc
 SRC     := src/arc_protocol.c
 HDR     := src/arc_protocol.h
 TEST    := test/test_arc_protocol.c
+GEN     := examples/gen_vectors.c
 
-.PHONY: all test clean
+.PHONY: all test vectors clean
 
 all: test
 
 test: build/test_arc_protocol
 	./build/test_arc_protocol
 
+vectors: build/gen_vectors
+	./build/gen_vectors
+
 build/test_arc_protocol: $(SRC) $(HDR) $(TEST) | build
 	$(CC) $(CFLAGS) -o $@ $(SRC) $(TEST)
+
+build/gen_vectors: $(SRC) $(HDR) $(GEN) | build
+	$(CC) $(CFLAGS) -o $@ $(SRC) $(GEN)
 
 build:
 	mkdir -p build

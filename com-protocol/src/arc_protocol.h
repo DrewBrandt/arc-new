@@ -94,6 +94,7 @@ typedef enum {
     ARC_ERR_BAD_CRC     = -5,
     ARC_ERR_BAD_COBS    = -6,  // malformed COBS encoding
     ARC_ERR_BAD_VERSION = -7,
+    ARC_ERR_BAD_ARG     = -8,  // invalid pointer/argument combination
 } arc_result_t;
 
 // ----------------------------------------------------------------------

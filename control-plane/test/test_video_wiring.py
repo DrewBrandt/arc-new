@@ -380,6 +380,15 @@ class ControllerMainAdapterTests(unittest.TestCase):
             pipe,
             (protocol.ADDR_SENDER_C,),
         )
+        controller.health.observe(
+            _frame(
+                src=protocol.ADDR_SENDER_C,
+                dst=protocol.ADDR_CONTROLLER,
+                family=protocol.FAMILY_NETMGMT,
+                type=protocol.NETMGMT_HEARTBEAT,
+            ),
+            now=1.0,
+        )
         handler = make_fc_video_handler(pipe, ["a"], switcher)
         src_frame = _frame(
             src=0,
@@ -408,6 +417,16 @@ class ControllerMainAdapterTests(unittest.TestCase):
             pipe,
             (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
         )
+        for addr in (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1):
+            controller.health.observe(
+                _frame(
+                    src=addr,
+                    dst=protocol.ADDR_CONTROLLER,
+                    family=protocol.FAMILY_NETMGMT,
+                    type=protocol.NETMGMT_HEARTBEAT,
+                ),
+                now=1.0,
+            )
         handler = make_fc_video_handler(pipe, [], switcher)
 
         handler(

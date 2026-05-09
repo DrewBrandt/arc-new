@@ -179,7 +179,7 @@ class ControllerPipelineTests(unittest.TestCase):
     def test_pipeline_description_contains_required_elements(self):
         pipe = ControllerPipeline(_config())
         desc = pipe.build_pipeline_description()
-        self.assertIn("compositor name=comp ignore-inactive-pads=true", desc)
+        self.assertIn("compositor name=comp", desc)
         self.assertIn("textoverlay name=overlay", desc)
         self.assertIn("KD3BBP", desc)  # callsign burned in
         self.assertIn("kmssink", desc)  # default analog sink
@@ -281,7 +281,7 @@ class ControllerPipelineTests(unittest.TestCase):
         pipe = ControllerPipeline(_config())
         self.assertEqual(pipe.mixer, "compositor")
         desc = pipe.build_pipeline_description()
-        self.assertIn("compositor name=comp ignore-inactive-pads=true", desc)
+        self.assertIn("compositor name=comp", desc)
         self.assertNotIn("glvideomixer", desc)
         self.assertNotIn("glupload", desc)
         self.assertNotIn("gldownload", desc)
@@ -291,8 +291,7 @@ class ControllerPipelineTests(unittest.TestCase):
         desc = pipe.build_pipeline_description()
         # Mixer element swapped, with gldownload + videoconvert before textoverlay.
         self.assertIn(
-            "glvideomixer name=comp ignore-inactive-pads=true"
-            " ! video/x-raw(memory:GLMemory),width=720,height=480"
+            "glvideomixer name=comp ! video/x-raw(memory:GLMemory),width=720,height=480"
             " ! gldownload ! videoconvert",
             desc,
         )

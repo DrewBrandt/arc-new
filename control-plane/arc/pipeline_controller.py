@@ -281,12 +281,12 @@ class ControllerPipeline:
             # glupload and the output needs gldownload before textoverlay
             # (which expects system-memory raw video).
             mixer_chain = (
-                f"glvideomixer name=comp ignore-inactive-pads=true ! {_GL_OUTPUT_CAPS}"
+                f"glvideomixer name=comp ! {_GL_OUTPUT_CAPS}"
                 " ! gldownload ! videoconvert"
             )
             slot_tail = " ! glupload"
         else:
-            mixer_chain = f"compositor name=comp ignore-inactive-pads=true ! {_OUTPUT_CAPS}"
+            mixer_chain = f"compositor name=comp ! {_OUTPUT_CAPS}"
             slot_tail = ""
         return (
             f"{mixer_chain}"

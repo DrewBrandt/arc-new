@@ -194,6 +194,19 @@ class FullTopologyTests(unittest.TestCase):
         fc_l: Node = topo["fc_l"]
         pipeline: FakeControllerPipeline = topo["pipeline"]
         video_calls = topo["video_calls"]
+        controller.health.observe(
+            p.Frame(
+                src=p.ADDR_SENDER_L1,
+                dst=p.ADDR_CONTROLLER,
+                flags=0,
+                session=21,
+                seq=0,
+                family=p.FAMILY_NETMGMT,
+                type=p.NETMGMT_HEARTBEAT,
+                payload=b"",
+            ),
+            now=1.0,
+        )
         links = topo["links"]
 
         controller.start_sender(p.ADDR_SENDER_C, now=1.0)

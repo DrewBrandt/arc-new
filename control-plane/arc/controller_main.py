@@ -166,6 +166,7 @@ async def run(cfg: ControllerConfig, *, pipeline=None) -> None:
             cfg,
             sink=cfg.video.sink,
             mixer=cfg.video.mixer,
+            startup_layout=cfg.video.startup_layout,
         )
     layout_names = list(cfg.layouts.keys())
     for slot_id, source_addr in enumerate(cfg.initial_sources):

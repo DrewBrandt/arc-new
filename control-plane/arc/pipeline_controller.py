@@ -53,8 +53,8 @@ _EMPTY_SOURCE = protocol.ADDR_UNASSIGNED
 _LOCAL_SOURCE = protocol.ADDR_CONTROLLER
 _SUPPORTED_MIXERS = ("compositor", "glvideomixer")
 _DEFAULT_LOCAL_CAMERA = (
-    "libcamerasrc ! video/x-raw,width=640,height=480,framerate=30/1"
-    " ! videoconvert"
+    "libcamerasrc ! videoconvert"
+    " ! video/x-raw,width=640,height=480,format=I420,framerate=30/1"
 )
 _BLACK_SOURCE = (
     "videotestsrc pattern=black is-live=true"
@@ -151,6 +151,7 @@ class ControllerPipeline:
         slot_1_source: str | None = None,
         sink: str = "kmssink sync=false",
         mixer: str = "compositor",
+        startup_layout: str | None = None,
     ) -> None:
         if mixer not in _SUPPORTED_MIXERS:
             raise PipelineError(
@@ -165,6 +166,7 @@ class ControllerPipeline:
         ]
         self.sink_factory = sink
         self.mixer = mixer
+        self.startup_layout = startup_layout or config.video.startup_layout
         self.layouts = parse_layouts(config.layouts)
         self._pipeline: Any = None
         self._compositor: Any = None
@@ -311,6 +313,11 @@ class ControllerPipeline:
         )
 
     def _initial_layout(self) -> Layout | None:
+        if self.startup_layout is not None:
+            layout = self.layouts.get(self.startup_layout)
+            if layout is None:
+                raise PipelineError(f"unknown startup layout: {self.startup_layout}")
+            return layout
         if self.DEFAULT_LAYOUT in self.layouts:
             return self.layouts[self.DEFAULT_LAYOUT]
         if self.layouts:

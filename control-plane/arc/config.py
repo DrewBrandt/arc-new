@@ -47,6 +47,7 @@ class VideoConfig:
 class ControllerVideoConfig:
     mixer: str = "compositor"
     sink: str = "kmssink sync=false"
+    startup_layout: str | None = None
 
 
 @dataclass(frozen=True)
@@ -134,6 +135,9 @@ def load_controller_config(path: str | Path) -> ControllerConfig:
     video = ControllerVideoConfig(
         mixer=_as_str(video_section.get("mixer", "compositor"), path, "[video].mixer"),
         sink=_as_str(video_section.get("sink", "kmssink sync=false"), path, "[video].sink"),
+        startup_layout=_optional_str(
+            video_section.get("startup_layout"), path, "[video].startup_layout"
+        ),
     )
 
     return ControllerConfig(
@@ -259,3 +263,9 @@ def _as_str(value: object, path: str | Path, name: str) -> str:
     if not isinstance(value, str):
         raise ConfigError(f"{path}: {name} must be a string")
     return value
+
+
+def _optional_str(value: object, path: str | Path, name: str) -> str | None:
+    if value is None:
+        return None
+    return _as_str(value, path, name)

@@ -187,6 +187,7 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertIn("comp.sink_1", desc)
         self.assertIn("comp.sink_2", desc)
         self.assertIn("libcamerasrc", desc)  # default slot 0 source
+        self.assertIn("format=I420", desc)
         self.assertIn("video/x-raw,width=720,height=480", desc)
 
     def test_set_layout_unknown_raises(self):
@@ -203,6 +204,28 @@ class ControllerPipelineTests(unittest.TestCase):
         )
         pipe.set_layout("split")
         self.assertEqual(pipe.current_layout, "split")
+
+    def test_startup_layout_can_be_configured(self):
+        pipe = ControllerPipeline(
+            _config(
+                {
+                    "local_full": {"slot_0": {"alpha": 1.0}},
+                    "split": {"slot_0": {"alpha": 0.5}, "slot_1": {"alpha": 1.0}},
+                }
+            ),
+            startup_layout="split",
+        )
+
+        self.assertEqual(pipe._initial_layout().name, "split")
+
+    def test_unknown_startup_layout_raises(self):
+        pipe = ControllerPipeline(
+            _config({"local_full": {"slot_0": {"alpha": 1.0}}}),
+            startup_layout="missing",
+        )
+
+        with self.assertRaises(PipelineError):
+            pipe._initial_layout()
 
     def test_set_overlay_records_text_when_idle(self):
         pipe = ControllerPipeline(_config())

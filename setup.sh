@@ -38,6 +38,7 @@ CONTROLLER_HOST="arcpi1.local"
 # Default Controller fleet. Override with --senders for your actual bench.
 # Format: addr:name:host:paired_fc, where paired_fc may be empty.
 CONTROLLER_SENDERS="0x12:sender-c:arcpi2.local:0x03,0x13:sender-l1:arcpi3.local:0x04,0x14:sender-l2:arcpi4.local:,0x15:sender-ground:arcpi5.local:"
+CONTROLLER_VIDEO_SINK="kmssink sync=false"
 
 SENDER_ADDR=""
 SENDER_NAME=""
@@ -262,24 +263,37 @@ if ! grep -q "^camera_auto_detect=1" "$CONFIG_TXT"; then
 fi
 
 enable_composite_video() {
+    local model overlay
+    model="$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || true)"
+    overlay="vc4-kms-v3d"
+    if printf '%s' "$model" | grep -q "Raspberry Pi 5"; then
+        overlay="vc4-kms-v3d-pi5"
+    fi
+
     info "Enabling composite video output..."
+    if grep -q "^display_auto_detect=" "$CONFIG_TXT"; then
+        sed -i 's/^display_auto_detect=.*/display_auto_detect=0/' "$CONFIG_TXT"
+    else
+        echo "display_auto_detect=0" >> "$CONFIG_TXT"
+    fi
+
     if grep -q "^enable_tvout=" "$CONFIG_TXT"; then
         sed -i 's/^enable_tvout=.*/enable_tvout=1/' "$CONFIG_TXT"
     else
         echo "enable_tvout=1" >> "$CONFIG_TXT"
     fi
 
-    if grep -q "^dtoverlay=vc4-kms-v3d.*composite" "$CONFIG_TXT"; then
-        return
-    fi
     if grep -q "^dtoverlay=vc4-kms-v3d" "$CONFIG_TXT"; then
-        sed -i '/^dtoverlay=vc4-kms-v3d/ s/$/,composite/' "$CONFIG_TXT"
+        sed -i "s/^dtoverlay=vc4-kms-v3d[^[:space:]]*/dtoverlay=${overlay},composite/" "$CONFIG_TXT"
     else
-        echo "dtoverlay=vc4-kms-v3d,composite" >> "$CONFIG_TXT"
+        echo "dtoverlay=${overlay},composite" >> "$CONFIG_TXT"
     fi
 
     if ! grep -qw "vc4.tv_norm=" "$CMDLINE_TXT"; then
         sed -i 's/$/ vc4.tv_norm=NTSC/' "$CMDLINE_TXT"
+    fi
+    if ! grep -qw "video=Composite-1:" "$CMDLINE_TXT"; then
+        sed -i 's/$/ video=Composite-1:720x480i,tv_mode=NTSC/' "$CMDLINE_TXT"
     fi
 }
 
@@ -406,6 +420,18 @@ default_paired_fc_for_addr() {
     esac
 }
 
+configure_controller_video_sink() {
+    local model
+    model="$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || true)"
+    if printf '%s' "$model" | grep -q "Raspberry Pi 5"; then
+        # Pi 5 composite is exposed by the RP1 VEC DRM device, not vc4.
+        CONTROLLER_VIDEO_SINK="kmssink driver-name=drm-rp1-vec sync=false"
+    else
+        CONTROLLER_VIDEO_SINK="kmssink sync=false"
+    fi
+    info "Controller video sink: ${CONTROLLER_VIDEO_SINK}"
+}
+
 write_controller_config() {
     local path="${CONFIG_DIR}/controller.toml"
     if [ -f "$path" ]; then
@@ -429,7 +455,8 @@ listen_port = 6000
 
 [video]
 mixer = "glvideomixer"
-sink = "kmssink sync=false"
+sink = "${CONTROLLER_VIDEO_SINK}"
+startup_layout = "local_full"
 
 [layouts.local_full]
 slot_0 = { xpos = 40, ypos = 0, width = 640, height = 480, alpha = 1.0 }
@@ -445,7 +472,7 @@ slot_1 = { xpos = 420, ypos = 280, width = 240, height = 160, alpha = 1.0, z = 2
 
 [sources]
 slot_0 = 0x10
-slot_1 = 0x12
+slot_1 = 0x00
 
 EOF
     IFS=',' read -ra sender_entries <<< "$CONTROLLER_SENDERS"
@@ -518,6 +545,7 @@ if [ "$ROLE" = "sender" ]; then
 fi
 
 if [ "$ROLE" = "controller" ]; then
+    configure_controller_video_sink
     write_controller_config
     info "Setting controller to boot without the desktop so KMS video is available..."
     systemctl set-default multi-user.target

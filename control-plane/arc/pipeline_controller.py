@@ -364,7 +364,7 @@ def _remote_sender_source(port: int) -> str:
         " ! rtpjitterbuffer latency=40"
         " ! rtph264depay"
         " ! h264parse"
-        " ! v4l2h264dec"
+        " ! avdec_h264"
         " ! videoconvert"
     )
 

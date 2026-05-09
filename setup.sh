@@ -261,6 +261,32 @@ if ! grep -q "^camera_auto_detect=1" "$CONFIG_TXT"; then
     echo "camera_auto_detect=1" >> "$CONFIG_TXT"
 fi
 
+enable_composite_video() {
+    info "Enabling composite video output..."
+    if grep -q "^enable_tvout=" "$CONFIG_TXT"; then
+        sed -i 's/^enable_tvout=.*/enable_tvout=1/' "$CONFIG_TXT"
+    else
+        echo "enable_tvout=1" >> "$CONFIG_TXT"
+    fi
+
+    if grep -q "^dtoverlay=vc4-kms-v3d.*composite" "$CONFIG_TXT"; then
+        return
+    fi
+    if grep -q "^dtoverlay=vc4-kms-v3d" "$CONFIG_TXT"; then
+        sed -i '/^dtoverlay=vc4-kms-v3d/ s/$/,composite/' "$CONFIG_TXT"
+    else
+        echo "dtoverlay=vc4-kms-v3d,composite" >> "$CONFIG_TXT"
+    fi
+
+    if ! grep -qw "vc4.tv_norm=" "$CMDLINE_TXT"; then
+        sed -i 's/$/ vc4.tv_norm=NTSC/' "$CMDLINE_TXT"
+    fi
+}
+
+if [ "$ROLE" = "controller" ]; then
+    enable_composite_video
+fi
+
 # ----------------------------------------------------------------------
 # Wifi power save off (both roles -- latency matters everywhere)
 # ----------------------------------------------------------------------
@@ -403,18 +429,18 @@ listen_port = 6000
 
 [video]
 mixer = "glvideomixer"
-sink = "kmssink connector-id=51 sync=false"
+sink = "kmssink sync=false"
 
 [layouts.local_full]
-slot_0 = { xpos = 0, ypos = 0, width = 720, height = 480, alpha = 1.0 }
+slot_0 = { xpos = 40, ypos = 0, width = 640, height = 480, alpha = 1.0 }
 slot_1 = { alpha = 0.0 }
 
 [layouts.remote_full]
 slot_0 = { alpha = 0.0 }
-slot_1 = { xpos = 0, ypos = 0, width = 720, height = 480, alpha = 1.0 }
+slot_1 = { xpos = 40, ypos = 0, width = 640, height = 480, alpha = 1.0 }
 
 [layouts.split]
-slot_0 = { xpos = 0, ypos = 0, width = 720, height = 480, alpha = 1.0, z = 1 }
+slot_0 = { xpos = 40, ypos = 0, width = 640, height = 480, alpha = 1.0, z = 1 }
 slot_1 = { xpos = 420, ypos = 280, width = 240, height = 160, alpha = 1.0, z = 2 }
 
 [sources]

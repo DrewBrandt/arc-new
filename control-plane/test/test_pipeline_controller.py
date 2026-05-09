@@ -57,7 +57,7 @@ class FakeElement:
 
 class FakeCompositor:
     def __init__(self):
-        self.pads = {"sink_0": FakePad(), "sink_1": FakePad()}
+        self.pads = {"sink_0": FakePad(), "sink_1": FakePad(), "sink_2": FakePad()}
 
     def get_static_pad(self, name):
         return self.pads.get(name)
@@ -185,7 +185,9 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertIn("kmssink", desc)  # default analog sink
         self.assertIn("comp.sink_0", desc)
         self.assertIn("comp.sink_1", desc)
+        self.assertIn("comp.sink_2", desc)
         self.assertIn("libcamerasrc", desc)  # default slot 0 source
+        self.assertIn("video/x-raw,width=720,height=480", desc)
 
     def test_set_layout_unknown_raises(self):
         pipe = ControllerPipeline(_config())
@@ -265,9 +267,14 @@ class ControllerPipelineTests(unittest.TestCase):
         pipe = ControllerPipeline(_config(), mixer="glvideomixer")
         desc = pipe.build_pipeline_description()
         # Mixer element swapped, with gldownload + videoconvert before textoverlay.
-        self.assertIn("glvideomixer name=comp ! gldownload ! videoconvert", desc)
-        # Each compositor sink fed via glupload.
-        self.assertEqual(desc.count(" ! glupload ! comp.sink_"), 2)
+        self.assertIn(
+            "glvideomixer name=comp ! video/x-raw(memory:GLMemory),width=720,height=480"
+            " ! gldownload ! videoconvert",
+            desc,
+        )
+        # Background plus both user-controlled slots are fed via glupload.
+        self.assertEqual(desc.count(" ! glupload ! comp.sink_"), 3)
+        self.assertIn("videotestsrc pattern=black is-live=true", desc)
         # textoverlay/sink/layout-application stay unchanged.
         self.assertIn("textoverlay name=overlay", desc)
         self.assertIn("kmssink", desc)
@@ -300,6 +307,11 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertEqual(FakeGst.pipelines[0].states, ["PLAYING", "NULL"])
         self.assertEqual(FakeGst.pipelines[1].states, ["PLAYING"])
         self.assertEqual(FakeGst.pipelines[1].overlay.props["text"], "KD3BBP / BOOST")
+        self.assertEqual(FakeGst.pipelines[1].comp.pads["sink_0"].props["width"], 720)
+        self.assertEqual(FakeGst.pipelines[1].comp.pads["sink_0"].props["height"], 480)
+        self.assertEqual(FakeGst.pipelines[1].comp.pads["sink_0"].props["zorder"], 0)
+        self.assertEqual(FakeGst.pipelines[1].comp.pads["sink_1"].props["alpha"], 1.0)
+        self.assertEqual(FakeGst.pipelines[1].comp.pads["sink_2"].props["alpha"], 1.0)
         self.assertEqual(pipe.current_layout, "split")
 
 

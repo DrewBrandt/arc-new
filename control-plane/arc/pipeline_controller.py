@@ -61,6 +61,13 @@ _BLACK_SOURCE = (
     " ! video/x-raw,width=640,height=480,framerate=30/1"
     " ! videoconvert"
 )
+_BACKGROUND_SOURCE = (
+    "videotestsrc pattern=black is-live=true"
+    " ! video/x-raw,width=720,height=480,framerate=30000/1001"
+    " ! videoconvert"
+)
+_OUTPUT_CAPS = "video/x-raw,width=720,height=480"
+_GL_OUTPUT_CAPS = "video/x-raw(memory:GLMemory),width=720,height=480"
 
 
 @dataclass(frozen=True)
@@ -271,18 +278,22 @@ class ControllerPipeline:
             # glvideomixer keeps frames in GL memory, so each input needs
             # glupload and the output needs gldownload before textoverlay
             # (which expects system-memory raw video).
-            mixer_chain = "glvideomixer name=comp ! gldownload ! videoconvert"
+            mixer_chain = (
+                f"glvideomixer name=comp ! {_GL_OUTPUT_CAPS}"
+                " ! gldownload ! videoconvert"
+            )
             slot_tail = " ! glupload"
         else:
-            mixer_chain = "compositor name=comp"
+            mixer_chain = f"compositor name=comp ! {_OUTPUT_CAPS}"
             slot_tail = ""
         return (
             f"{mixer_chain}"
             f" ! textoverlay name=overlay text=\"{callsign}\""
             f" font-desc=\"Sans 18\" valignment=top halignment=right"
             f" ! {self.sink_factory}"
-            f" {self._slot_sources[0].description}{slot_tail} ! comp.sink_0"
-            f" {self._slot_sources[1].description}{slot_tail} ! comp.sink_1"
+            f" {_BACKGROUND_SOURCE}{slot_tail} ! comp.sink_0"
+            f" {self._slot_sources[0].description}{slot_tail} ! comp.sink_1"
+            f" {self._slot_sources[1].description}{slot_tail} ! comp.sink_2"
         )
 
     def _resolve_source(self, slot_id: int, source_addr: int) -> SourceProps:
@@ -314,7 +325,12 @@ class ControllerPipeline:
     def _apply_layout_now(self, layout: Layout) -> None:
         if self._compositor is None:
             return
-        for pad_name, slot in (("sink_0", layout.slot_0), ("sink_1", layout.slot_1)):
+        background = SlotProps(width=720, height=480, alpha=1.0, zorder=0)
+        for pad_name, slot in (
+            ("sink_0", background),
+            ("sink_1", layout.slot_0),
+            ("sink_2", layout.slot_1),
+        ):
             pad = self._compositor.get_static_pad(pad_name)
             if pad is None:
                 log.warning("compositor pad %s missing; skipping", pad_name)

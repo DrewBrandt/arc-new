@@ -362,14 +362,13 @@ def _remote_sender_source(port: int) -> str:
     return (
         f"udpsrc port={port}"
         " caps=\"application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000\""
-        " ! queue max-size-buffers=2 leaky=downstream"
-        " ! rtpjitterbuffer latency=40 drop-on-latency=true"
-        " ! queue max-size-buffers=2 leaky=downstream"
+        " ! rtpjitterbuffer latency=100 drop-on-latency=true"
         " ! rtph264depay"
         " ! h264parse"
         " ! avdec_h264"
-        " ! queue max-size-buffers=2 leaky=downstream"
         " ! videoconvert"
+        " ! video/x-raw,format=I420"
+        " ! queue max-size-buffers=2 leaky=downstream"
     )
 
 

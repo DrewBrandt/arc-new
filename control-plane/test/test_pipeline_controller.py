@@ -256,9 +256,10 @@ class ControllerPipelineTests(unittest.TestCase):
         desc = pipe.build_pipeline_description()
         self.assertIn("udpsrc port=5012", desc)
         self.assertIn("clock-rate=90000", desc)
-        self.assertIn("rtpjitterbuffer latency=40 drop-on-latency=true", desc)
+        self.assertIn("rtpjitterbuffer latency=100 drop-on-latency=true", desc)
         self.assertIn("rtph264depay", desc)
         self.assertIn("avdec_h264", desc)
+        self.assertIn("video/x-raw,format=I420", desc)
 
     def test_set_source_empty_and_local_sources(self):
         pipe = ControllerPipeline(_config())

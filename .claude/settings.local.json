@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install *)",
+      "Bash(python -c \"from docx import Document; d=Document\\('ARC_Systems_Design.docx'\\); print\\('\\\\n'.join\\(p.text for p in d.paragraphs\\)\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(python -m unittest discover -s test)",
+      "Bash(python -m unittest discover -s test -v)",
+      "Bash(python -m unittest test.test_protocol test.test_router test.test_messages test.test_node_flow test.test_reliable test.test_sender_link test.test_controller)"
+    ]
+  }
+}

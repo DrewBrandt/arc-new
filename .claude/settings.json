@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 15 python -m unittest test.test_controller test.test_sender test.test_health)",
+      "Bash(timeout 15 python -m unittest test.test_controller test.test_sender test.test_health test.test_uart_link)",
+      "Bash(timeout 15 python -m unittest test.test_config -v)",
+      "Bash(timeout 10 python -c ' *)",
+      "Bash(timeout 30 python -m unittest test.test_integration -v)",
+      "Bash(cc --version)",
+      "Bash(gcc --version)",
+      "Bash(make clean *)",
+      "Bash(make test *)",
+      "Bash(where mingw32-make *)",
+      "Bash(mingw32-make clean *)",
+      "Bash(mingw32-make test *)"
+    ]
+  }
+}

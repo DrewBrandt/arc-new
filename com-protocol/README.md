@@ -49,10 +49,19 @@ make vectors    # builds and prints canonical test vectors
 ## Layout
 
 ```
-src/        protocol library used by firmware and host tools
-test/       host-side unit tests
-examples/   small utilities, including test vector generation
+src/arc_protocol.{h,c}   framing: build/parse, COBS, CRC
+src/arc_reliable.{h,c}   per-endpoint ACK/retry/dedup state machine
+src/arc_router.{h,c}     static destination-based router
+test/                    host-side unit tests
+examples/                small utilities, including test vector generation
 ```
+
+The reliability and router modules mirror the Python implementations in
+`control-plane/arc/reliable.py` and `control-plane/arc/router.py`. They use
+fixed-size tables sized at compile time -- override the defaults via
+`-DARC_RELIABLE_PENDING_MAX=N`, `-DARC_RELIABLE_PAYLOAD_MAX=N`,
+`-DARC_ROUTER_MAX_LINKS=N`, etc., for memory-constrained targets like
+the Arduino Nano.
 
 ## Using from C / Arduino
 
@@ -80,6 +89,47 @@ int m = arc_cobs_encode(frame, n, encoded, sizeof(encoded));
 ```
 
 For TCP, send the frame directly with a length prefix.
+
+### Reliable endpoint and router
+
+For nodes that need ACK/retry semantics, layer `arc_reliable_t` on top
+of the framing primitives. Wire it to an `arc_router_t` so reliable
+sends are dispatched through the same forwarding table as raw frames:
+
+```c
+static void link_send(void* user, const arc_frame_t* f) {
+    // Build wire bytes, COBS-encode if serial, push to transport.
+}
+static void route_via_router(void* user, const arc_frame_t* f) {
+    arc_router_route((arc_router_t*)user, f);
+}
+static void deliver(void* user, const arc_frame_t* f) {
+    // Local app dispatch by f->family / f->type
+}
+
+arc_router_t router;
+arc_reliable_t reliable;
+arc_router_init(&router, MY_ADDR, /*local=*/NULL, NULL);
+int link_idx = arc_router_add_link(&router, link_send, /*user=*/&my_link);
+arc_router_add_route(&router, ARC_ADDR_CONTROLLER, link_idx);
+
+arc_reliable_init(&reliable, MY_ADDR, /*session=*/1,
+                  /*timeout_ms=*/1000, /*max_retries=*/3, /*first_seq=*/0,
+                  route_via_router, deliver, /*fail=*/NULL, &router);
+
+// Make local_handler dispatch through reliable so dedup applies.
+router.local_fn   = (arc_router_local_fn)arc_reliable_receive;
+router.local_user = &reliable;
+
+// Send a reliable command:
+arc_reliable_send(&reliable, ARC_ADDR_CONTROLLER,
+                  ARC_FAMILY_VIDEO, /*type=*/0x05,
+                  /*flags=*/0, /*reliable=*/true,
+                  payload, payload_len, millis(), /*out_seq=*/NULL);
+
+// In your main loop:
+arc_reliable_tick(&reliable, millis());
+```
 
 Receive side:
 

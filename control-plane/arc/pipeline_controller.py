@@ -53,7 +53,7 @@ _EMPTY_SOURCE = protocol.ADDR_UNASSIGNED
 _LOCAL_SOURCE = protocol.ADDR_CONTROLLER
 _SUPPORTED_MIXERS = ("compositor", "glvideomixer")
 _DEFAULT_LOCAL_CAMERA = (
-    "libcamerasrc ! videoconvert"
+    "libcamerasrc ! queue max-size-buffers=2 leaky=downstream ! videoconvert"
     " ! video/x-raw,width=640,height=480,format=I420,framerate=30/1"
 )
 _BLACK_SOURCE = (
@@ -360,11 +360,14 @@ def _set_pad_props(pad: Any, slot: SlotProps) -> None:
 def _remote_sender_source(port: int) -> str:
     return (
         f"udpsrc port={port}"
-        " caps=\"application/x-rtp,media=video,encoding-name=H264,payload=96\""
+        " caps=\"application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000\""
+        " ! queue max-size-buffers=2 leaky=downstream"
         " ! rtpjitterbuffer latency=40 drop-on-latency=true"
+        " ! queue max-size-buffers=2 leaky=downstream"
         " ! rtph264depay"
         " ! h264parse"
         " ! avdec_h264"
+        " ! queue max-size-buffers=2 leaky=downstream"
         " ! videoconvert"
     )
 

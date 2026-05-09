@@ -187,6 +187,7 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertIn("comp.sink_1", desc)
         self.assertIn("comp.sink_2", desc)
         self.assertIn("libcamerasrc", desc)  # default slot 0 source
+        self.assertIn("queue max-size-buffers=2 leaky=downstream", desc)
         self.assertIn("format=I420", desc)
         self.assertIn("video/x-raw,width=720,height=480", desc)
 
@@ -254,6 +255,7 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertEqual(pipe.slot_sources[1].addr, protocol.ADDR_SENDER_C)
         desc = pipe.build_pipeline_description()
         self.assertIn("udpsrc port=5012", desc)
+        self.assertIn("clock-rate=90000", desc)
         self.assertIn("rtpjitterbuffer latency=40 drop-on-latency=true", desc)
         self.assertIn("rtph264depay", desc)
         self.assertIn("avdec_h264", desc)

@@ -162,7 +162,11 @@ def make_fc_video_handler(
 
 async def run(cfg: ControllerConfig, *, pipeline=None) -> None:
     if pipeline is None:
-        pipeline = ControllerPipeline(cfg)
+        pipeline = ControllerPipeline(
+            cfg,
+            sink=cfg.video.sink,
+            mixer=cfg.video.mixer,
+        )
     layout_names = list(cfg.layouts.keys())
     for slot_id, source_addr in enumerate(cfg.initial_sources):
         try:

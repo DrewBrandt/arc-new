@@ -44,6 +44,12 @@ class VideoConfig:
 
 
 @dataclass(frozen=True)
+class ControllerVideoConfig:
+    mixer: str = "compositor"
+    sink: str = "kmssink sync=false"
+
+
+@dataclass(frozen=True)
 class SenderEntry:
     addr: int
     name: str
@@ -65,6 +71,7 @@ class ControllerConfig:
         protocol.ADDR_CONTROLLER,
         protocol.ADDR_UNASSIGNED,
     )
+    video: ControllerVideoConfig = field(default_factory=ControllerVideoConfig)
 
 
 @dataclass(frozen=True)
@@ -121,6 +128,13 @@ def load_controller_config(path: str | Path) -> ControllerConfig:
         int(sources.get("slot_0", protocol.ADDR_CONTROLLER)),
         int(sources.get("slot_1", protocol.ADDR_UNASSIGNED)),
     )
+    video_section = raw.get("video", {})
+    if video_section and not isinstance(video_section, dict):
+        raise ConfigError(f"{path}: [video] must be a table")
+    video = ControllerVideoConfig(
+        mixer=_as_str(video_section.get("mixer", "compositor"), path, "[video].mixer"),
+        sink=_as_str(video_section.get("sink", "kmssink sync=false"), path, "[video].sink"),
+    )
 
     return ControllerConfig(
         addr=addr,
@@ -132,6 +146,7 @@ def load_controller_config(path: str | Path) -> ControllerConfig:
         peer_timeout_s=peer_timeout_s,
         layouts=layouts,
         initial_sources=initial_sources,
+        video=video,
     )
 
 

@@ -51,6 +51,7 @@ _PAD_PROP_ALIASES = {"z": "zorder"}
 _SLOT_COUNT = 2
 _EMPTY_SOURCE = protocol.ADDR_UNASSIGNED
 _LOCAL_SOURCE = protocol.ADDR_CONTROLLER
+_SUPPORTED_MIXERS = ("compositor", "glvideomixer")
 _DEFAULT_LOCAL_CAMERA = (
     "libcamerasrc ! video/x-raw,width=640,height=480,framerate=30/1"
     " ! videoconvert"
@@ -142,7 +143,12 @@ class ControllerPipeline:
         slot_0_source: str | None = None,
         slot_1_source: str | None = None,
         sink: str = "kmssink sync=false",
+        mixer: str = "compositor",
     ) -> None:
+        if mixer not in _SUPPORTED_MIXERS:
+            raise PipelineError(
+                f"unsupported mixer {mixer!r}; expected one of {_SUPPORTED_MIXERS}"
+            )
         self.config = config
         self.callsign = callsign or config.callsign
         self._sender_ips = {sender.addr: sender.ip for sender in config.senders}
@@ -151,6 +157,7 @@ class ControllerPipeline:
             SourceProps(_EMPTY_SOURCE, slot_1_source or _BLACK_SOURCE),
         ]
         self.sink_factory = sink
+        self.mixer = mixer
         self.layouts = parse_layouts(config.layouts)
         self._pipeline: Any = None
         self._compositor: Any = None
@@ -260,13 +267,22 @@ class ControllerPipeline:
         # strings; embedded quotes would need escaping but a callsign
         # never contains them.
         callsign = self.callsign.replace('"', '')
+        if self.mixer == "glvideomixer":
+            # glvideomixer keeps frames in GL memory, so each input needs
+            # glupload and the output needs gldownload before textoverlay
+            # (which expects system-memory raw video).
+            mixer_chain = "glvideomixer name=comp ! gldownload ! videoconvert"
+            slot_tail = " ! glupload"
+        else:
+            mixer_chain = "compositor name=comp"
+            slot_tail = ""
         return (
-            f"compositor name=comp"
+            f"{mixer_chain}"
             f" ! textoverlay name=overlay text=\"{callsign}\""
             f" font-desc=\"Sans 18\" valignment=top halignment=right"
             f" ! {self.sink_factory}"
-            f" {self._slot_sources[0].description} ! comp.sink_0"
-            f" {self._slot_sources[1].description} ! comp.sink_1"
+            f" {self._slot_sources[0].description}{slot_tail} ! comp.sink_0"
+            f" {self._slot_sources[1].description}{slot_tail} ! comp.sink_1"
         )
 
     def _resolve_source(self, slot_id: int, source_addr: int) -> SourceProps:
@@ -375,6 +391,15 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Override sink (default: 'kmssink sync=false'; use 'autovideosink' on a desktop)",
     )
+    parser.add_argument(
+        "--mixer",
+        default=None,
+        choices=list(_SUPPORTED_MIXERS),
+        help=(
+            "Compositor element (default: compositor). Try glvideomixer if"
+            " compositor is too slow on this hardware; requires gstreamer1.0-gl."
+        ),
+    )
     args = parser.parse_args(argv)
 
     cfg = load_controller_config(args.config)
@@ -385,6 +410,8 @@ def main(argv: list[str] | None = None) -> int:
         kwargs["slot_1_source"] = args.slot1
     if args.sink is not None:
         kwargs["sink"] = args.sink
+    if args.mixer is not None:
+        kwargs["mixer"] = args.mixer
     pipeline = ControllerPipeline(cfg, **kwargs)
 
     _import_gstreamer()

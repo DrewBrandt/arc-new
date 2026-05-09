@@ -208,6 +208,7 @@ apt_install \
     gstreamer1.0-plugins-bad \
     gstreamer1.0-plugins-ugly \
     gstreamer1.0-libav \
+    gstreamer1.0-gl \
     gstreamer1.0-libcamera \
     rpicam-apps \
     ffmpeg \
@@ -400,17 +401,21 @@ callsign = "KD3BBP"
 [controller]
 listen_port = 6000
 
+[video]
+mixer = "glvideomixer"
+sink = "kmssink connector-id=51 sync=false"
+
 [layouts.local_full]
-slot_0 = { xpos = 0, ypos = 0, width = 1280, height = 480, alpha = 1.0 }
+slot_0 = { xpos = 0, ypos = 0, width = 720, height = 480, alpha = 1.0 }
 slot_1 = { alpha = 0.0 }
 
 [layouts.remote_full]
 slot_0 = { alpha = 0.0 }
-slot_1 = { xpos = 0, ypos = 0, width = 1280, height = 480, alpha = 1.0 }
+slot_1 = { xpos = 0, ypos = 0, width = 720, height = 480, alpha = 1.0 }
 
 [layouts.split]
-slot_0 = { xpos = 0, ypos = 0, width = 640, height = 480, alpha = 1.0 }
-slot_1 = { xpos = 640, ypos = 0, width = 640, height = 480, alpha = 1.0 }
+slot_0 = { xpos = 0, ypos = 0, width = 720, height = 480, alpha = 1.0, z = 1 }
+slot_1 = { xpos = 420, ypos = 280, width = 240, height = 160, alpha = 1.0, z = 2 }
 
 [sources]
 slot_0 = 0x10
@@ -488,6 +493,8 @@ fi
 
 if [ "$ROLE" = "controller" ]; then
     write_controller_config
+    info "Setting controller to boot without the desktop so KMS video is available..."
+    systemctl set-default multi-user.target
 else
     write_sender_config
 fi
@@ -519,6 +526,8 @@ Type=simple
 User=${SUDO_USER:-pi}
 WorkingDirectory=${APP_DIR}/control-plane
 Environment=PYTHONUNBUFFERED=1
+Environment=GST_GL_PLATFORM=egl
+Environment=GST_GL_WINDOW=gbm
 ExecStart=${EXEC_START}
 Restart=on-failure
 RestartSec=2

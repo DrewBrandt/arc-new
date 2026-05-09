@@ -252,6 +252,30 @@ class ControllerPipelineTests(unittest.TestCase):
         with self.assertRaises(PipelineError):
             pipe.set_source(3, protocol.ADDR_SENDER_C)
 
+    def test_default_mixer_is_compositor(self):
+        pipe = ControllerPipeline(_config())
+        self.assertEqual(pipe.mixer, "compositor")
+        desc = pipe.build_pipeline_description()
+        self.assertIn("compositor name=comp", desc)
+        self.assertNotIn("glvideomixer", desc)
+        self.assertNotIn("glupload", desc)
+        self.assertNotIn("gldownload", desc)
+
+    def test_glvideomixer_inserts_gl_elements(self):
+        pipe = ControllerPipeline(_config(), mixer="glvideomixer")
+        desc = pipe.build_pipeline_description()
+        # Mixer element swapped, with gldownload + videoconvert before textoverlay.
+        self.assertIn("glvideomixer name=comp ! gldownload ! videoconvert", desc)
+        # Each compositor sink fed via glupload.
+        self.assertEqual(desc.count(" ! glupload ! comp.sink_"), 2)
+        # textoverlay/sink/layout-application stay unchanged.
+        self.assertIn("textoverlay name=overlay", desc)
+        self.assertIn("kmssink", desc)
+
+    def test_unknown_mixer_raises(self):
+        with self.assertRaises(PipelineError):
+            ControllerPipeline(_config(), mixer="bogusmixer")
+
     def test_set_source_rebuilds_live_pipeline_and_preserves_state(self):
         import arc.pipeline_controller as pc
 

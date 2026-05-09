@@ -7,6 +7,7 @@ from arc import protocol as p
 from arc.config import (
     ConfigError,
     ControllerConfig,
+    ControllerVideoConfig,
     SenderConfig,
     load_controller_config,
     load_sender_config,
@@ -38,6 +39,10 @@ class ControllerConfigTests(unittest.TestCase):
 
             [controller]
             listen_port = 6000
+
+            [video]
+            mixer = "glvideomixer"
+            sink = "kmssink connector-id=51 sync=false"
 
             [[senders]]
             id = 0x12
@@ -71,6 +76,26 @@ class ControllerConfigTests(unittest.TestCase):
         self.assertIsNone(cfg.senders[1].paired_fc)
         self.assertIn("split", cfg.layouts)
         self.assertEqual(cfg.initial_sources, (p.ADDR_CONTROLLER, p.ADDR_SENDER_C))
+        self.assertIsInstance(cfg.video, ControllerVideoConfig)
+        self.assertEqual(cfg.video.mixer, "glvideomixer")
+        self.assertEqual(cfg.video.sink, "kmssink connector-id=51 sync=false")
+
+    def test_controller_video_defaults_to_software_compositor(self):
+        path = write_toml(
+            """
+            [node]
+            address = 0x10
+
+            [uart]
+            device = "/dev/serial0"
+
+            [overlay]
+            callsign = "KD3BBP"
+            """
+        )
+        cfg = load_controller_config(path)
+        self.assertEqual(cfg.video.mixer, "compositor")
+        self.assertEqual(cfg.video.sink, "kmssink sync=false")
 
     def test_rejects_wrong_node_address(self):
         path = write_toml(

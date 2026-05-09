@@ -69,13 +69,14 @@ def make_video_command_handler(pipeline: SenderPipeline):
 async def run(cfg: SenderConfig, status_provider=None, *, pipeline=None) -> None:
     if pipeline is None:
         pipeline = SenderPipeline(cfg)
+    video_handler = make_video_command_handler(pipeline)
     sender = Sender(
         addr=cfg.addr,
         paired_fc=cfg.paired_fc,
         controller_addr=cfg.controller_addr,
         heartbeat_interval_s=cfg.heartbeat_interval_s,
         peer_timeout_s=cfg.peer_timeout_s,
-        video_command_handler=make_video_command_handler(pipeline),
+        video_command_handler=video_handler,
     )
 
     controller_link = QueuedTcpLink(lambda f: sender.receive(f, _now()))
@@ -87,6 +88,13 @@ async def run(cfg: SenderConfig, status_provider=None, *, pipeline=None) -> None
         links["uart-fc"] = fc_link
 
     sender.set_links(links)
+    if cfg.video.start_stream_on_boot:
+        log.info("Sender %s starting video stream on boot", cfg.name)
+        _apply_boot_video_command(
+            sender,
+            messages.VideoType.START_STREAM,
+            now=_now(),
+        )
 
     stop_event = asyncio.Event()
 
@@ -169,6 +177,26 @@ def _default_status_provider(sender: Sender) -> messages.StatusReport:
         rssi_dbm=0,
         tx_frames=0,
         dropped_frames=0,
+    )
+
+
+def _apply_boot_video_command(
+    sender: Sender,
+    video_type: messages.VideoType,
+    now: float = 0.0,
+) -> None:
+    sender.receive(
+        protocol.Frame(
+            src=sender.controller_addr,
+            dst=sender.addr,
+            flags=0,
+            session=0,
+            seq=0,
+            family=protocol.FAMILY_VIDEO,
+            type=video_type,
+            payload=b"",
+        ),
+        now=now,
     )
 
 

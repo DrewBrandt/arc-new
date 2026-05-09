@@ -58,13 +58,18 @@ class SourceSwitcher:
         sender_addrs: tuple[int, ...],
         *,
         slot_count: int = SOURCE_SLOT_COUNT,
+        initial_sources: tuple[int, ...] | None = None,
     ) -> None:
         self.controller = controller
         self.pipeline = pipeline
         self.sender_addrs = set(sender_addrs)
-        self.sources: list[int] = [EMPTY_SOURCE] * slot_count
+        defaults = [EMPTY_SOURCE] * slot_count
         if slot_count:
-            self.sources[0] = LOCAL_SOURCE
+            defaults[0] = LOCAL_SOURCE
+        if initial_sources is not None:
+            for idx, source in enumerate(initial_sources[:slot_count]):
+                defaults[idx] = source
+        self.sources = defaults
 
     def set_source(self, slot_id: int, source_addr: int, now: float = 0.0) -> None:
         if not 0 <= slot_id < len(self.sources):
@@ -159,6 +164,15 @@ async def run(cfg: ControllerConfig, *, pipeline=None) -> None:
     if pipeline is None:
         pipeline = ControllerPipeline(cfg)
     layout_names = list(cfg.layouts.keys())
+    for slot_id, source_addr in enumerate(cfg.initial_sources):
+        try:
+            pipeline.set_source(slot_id, source_addr)
+        except PipelineError:
+            log.exception(
+                "video pipeline failed to set initial source slot=%d source=0x%02x",
+                slot_id,
+                source_addr,
+            )
 
     try:
         pipeline.start()
@@ -177,6 +191,7 @@ async def run(cfg: ControllerConfig, *, pipeline=None) -> None:
             controller,
             pipeline,
             tuple(s.addr for s in cfg.senders),
+            initial_sources=cfg.initial_sources,
         ),
     )
 

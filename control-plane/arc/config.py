@@ -40,6 +40,7 @@ class VideoConfig:
     framerate: int = 30
     bitrate_bps: int = 2_500_000
     recording_path: str = "/var/arc/recordings/"
+    start_stream_on_boot: bool = False
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,10 @@ class ControllerConfig:
     heartbeat_interval_s: float = 1.0
     peer_timeout_s: float = 3.0
     layouts: Mapping[str, Mapping[str, Mapping[str, float]]] = field(default_factory=dict)
+    initial_sources: tuple[int, int] = (
+        protocol.ADDR_CONTROLLER,
+        protocol.ADDR_UNASSIGNED,
+    )
 
 
 @dataclass(frozen=True)
@@ -109,6 +114,13 @@ def load_controller_config(path: str | Path) -> ControllerConfig:
     layouts = raw.get("layouts", {})
     if not isinstance(layouts, dict):
         raise ConfigError(f"{path}: [layouts] must be a table")
+    sources = raw.get("sources", {})
+    if sources and not isinstance(sources, dict):
+        raise ConfigError(f"{path}: [sources] must be a table")
+    initial_sources = (
+        int(sources.get("slot_0", protocol.ADDR_CONTROLLER)),
+        int(sources.get("slot_1", protocol.ADDR_UNASSIGNED)),
+    )
 
     return ControllerConfig(
         addr=addr,
@@ -119,6 +131,7 @@ def load_controller_config(path: str | Path) -> ControllerConfig:
         heartbeat_interval_s=heartbeat_interval_s,
         peer_timeout_s=peer_timeout_s,
         layouts=layouts,
+        initial_sources=initial_sources,
     )
 
 
@@ -150,6 +163,7 @@ def load_sender_config(path: str | Path) -> SenderConfig:
             path,
             "[recording].path",
         ),
+        start_stream_on_boot=bool(video_section.get("start_stream_on_boot", False)),
     )
 
     uart: UartConfig | None = None

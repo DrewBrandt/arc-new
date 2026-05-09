@@ -23,7 +23,7 @@ from arc.controller import Controller, ControllerError
 from arc.controller_main import SourceSwitcher, make_fc_video_handler
 from arc.pipeline_sender import PipelineError
 from arc.sender import Sender
-from arc.sender_main import make_video_command_handler
+from arc.sender_main import _apply_boot_video_command, make_video_command_handler
 
 
 def _frame(
@@ -312,6 +312,20 @@ class SenderMainAdapterTests(unittest.TestCase):
                 type=messages.VideoType.START_STREAM,
             ),
         )
+
+    def test_boot_video_command_updates_sender_and_pipeline(self):
+        pipe = FakeSenderPipeline()
+        sender = Sender(
+            addr=protocol.ADDR_SENDER_C,
+            paired_fc=None,
+            video_command_handler=make_video_command_handler(pipe),
+        )
+
+        _apply_boot_video_command(sender, messages.VideoType.START_STREAM)
+
+        self.assertTrue(sender.transmitting)
+        self.assertTrue(sender.recording)
+        self.assertEqual(pipe.started, 1)
 
 
 class ControllerMainAdapterTests(unittest.TestCase):

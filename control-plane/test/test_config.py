@@ -53,6 +53,10 @@ class ControllerConfigTests(unittest.TestCase):
             [layouts.split]
             slot_0 = { xpos = 0, ypos = 0, width = 640, height = 480, alpha = 1.0 }
             slot_1 = { xpos = 640, ypos = 0, width = 640, height = 480, alpha = 1.0 }
+
+            [sources]
+            slot_0 = 0x10
+            slot_1 = 0x12
             """
         )
         cfg = load_controller_config(path)
@@ -66,6 +70,7 @@ class ControllerConfigTests(unittest.TestCase):
         self.assertEqual(cfg.senders[0].paired_fc, 0x03)
         self.assertIsNone(cfg.senders[1].paired_fc)
         self.assertIn("split", cfg.layouts)
+        self.assertEqual(cfg.initial_sources, (p.ADDR_CONTROLLER, p.ADDR_SENDER_C))
 
     def test_rejects_wrong_node_address(self):
         path = write_toml(
@@ -114,6 +119,7 @@ class SenderConfigTests(unittest.TestCase):
             height = 480
             framerate = 30
             bitrate = 2500000
+            start_stream_on_boot = true
 
             [recording]
             path = "/var/arc/recordings/"
@@ -130,6 +136,7 @@ class SenderConfigTests(unittest.TestCase):
         self.assertEqual(cfg.controller_ip, "10.42.0.1")
         self.assertEqual(cfg.controller_port, 6000)
         self.assertEqual(cfg.video.bitrate_bps, 2_500_000)
+        self.assertTrue(cfg.video.start_stream_on_boot)
         self.assertIsNotNone(cfg.uart)
         self.assertEqual(cfg.uart.device, "/dev/serial0")
 

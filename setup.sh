@@ -412,6 +412,10 @@ slot_1 = { xpos = 0, ypos = 0, width = 1280, height = 480, alpha = 1.0 }
 slot_0 = { xpos = 0, ypos = 0, width = 640, height = 480, alpha = 1.0 }
 slot_1 = { xpos = 640, ypos = 0, width = 640, height = 480, alpha = 1.0 }
 
+[sources]
+slot_0 = 0x10
+slot_1 = 0x12
+
 EOF
     IFS=',' read -ra sender_entries <<< "$CONTROLLER_SENDERS"
     for entry in "${sender_entries[@]}"; do
@@ -461,6 +465,7 @@ width = 640
 height = 480
 framerate = 30
 bitrate = 2500000
+start_stream_on_boot = true
 
 [recording]
 path = "/var/arc/recordings/"

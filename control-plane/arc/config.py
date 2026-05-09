@@ -39,6 +39,7 @@ class VideoConfig:
     height: int = 480
     framerate: int = 30
     bitrate_bps: int = 2_500_000
+    encoder: str = "v4l2h264enc"
     recording_path: str = "/var/arc/recordings/"
     start_stream_on_boot: bool = False
 
@@ -177,6 +178,7 @@ def load_sender_config(path: str | Path) -> SenderConfig:
         height=int(video_section.get("height", 480)),
         framerate=int(video_section.get("framerate", 30)),
         bitrate_bps=int(video_section.get("bitrate", 2_500_000)),
+        encoder=_as_str(video_section.get("encoder", "v4l2h264enc"), path, "[video].encoder"),
         recording_path=_as_str(
             recording_section.get("path", "/var/arc/recordings/"),
             path,

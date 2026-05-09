@@ -20,9 +20,10 @@ set -e
 # ----------------------------------------------------------------------
 
 # Lab/dev wifi networks (high priority, used on the bench)
+# Format: SSID:PSK:priority. Higher priority wins when multiple are visible.
 LAB_NETWORKS=(
-    "TRT-ARC-1:IREC2025!"
-    "TRT-ARC-2:IREC2025!"
+    "TRT-ARC-1:IREC2025!:50"
+    "TRT-ARC-2:IREC2025!:40"
 )
 
 # In-flight network (the AP that the controller hosts)
@@ -97,7 +98,10 @@ apt_install() {
 nm_add_client() {
     local name="$1" ssid="$2" psk="$3" priority="$4"
     if nmcli -t -f NAME con show | grep -qx "$name"; then
-        info "Connection '$name' already exists, skipping"
+        info "Connection '$name' already exists, updating priority and 2.4 GHz band"
+        nmcli connection modify "$name" \
+            connection.autoconnect-priority "$priority" \
+            802-11-wireless.band bg
         return
     fi
     info "Adding client connection '$name' (SSID: $ssid)"
@@ -107,6 +111,7 @@ nm_add_client() {
         ssid "$ssid" \
         autoconnect yes \
         connection.autoconnect-priority "$priority" \
+        802-11-wireless.band bg \
         wifi-sec.key-mgmt WPA-PSK \
         wifi-sec.psk "$psk"
 }
@@ -329,9 +334,8 @@ info "Configuring wifi networks..."
 
 # Lab/dev networks -- both roles auto-join these when in range
 for net in "${LAB_NETWORKS[@]}"; do
-    ssid="${net%%:*}"
-    psk="${net##*:}"
-    nm_add_client "lab-${ssid}" "$ssid" "$psk" 10
+    IFS=':' read -r ssid psk priority <<< "$net"
+    nm_add_client "lab-${ssid}" "$ssid" "$psk" "${priority:-10}"
 done
 
 if [ "$ROLE" = "controller" ]; then
@@ -521,8 +525,9 @@ port = 6000
 [video]
 width = 640
 height = 480
-framerate = 30
-bitrate = 2500000
+framerate = 15
+bitrate = 1200000
+encoder = "x264enc tune=zerolatency speed-preset=ultrafast key-int-max=15 bitrate=1200"
 start_stream_on_boot = true
 
 [recording]

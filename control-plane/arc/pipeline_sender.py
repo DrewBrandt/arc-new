@@ -78,7 +78,7 @@ class SenderPipeline:
         controller_port: int | None = None,
         recording_path: str | Path | None = None,
         camera_source: str = "libcamerasrc",
-        encoder: str = "v4l2h264enc",
+        encoder: str | None = None,
         clock: Callable[[], _dt.datetime] = _dt.datetime.now,
     ) -> None:
         self.config = config
@@ -89,7 +89,7 @@ class SenderPipeline:
             else video_port_for_sender(config.addr)
         )
         self.camera_source = camera_source
-        self.encoder = encoder
+        self.encoder = encoder or config.video.encoder
         self._clock = clock
         self._bitrate_bps = config.video.bitrate_bps
 
@@ -186,15 +186,14 @@ class SenderPipeline:
 
         if rec_path is None:
             rec_path = self._next_recording_path()
+        encoder = self._encoder_description()
         return (
             f"{self.camera_source}"
             f" ! video/x-raw,width={self.config.video.width},"
             f"height={self.config.video.height},"
             f"framerate={self.config.video.framerate}/1"
             f" ! videoconvert"
-            f" ! {self.encoder} name=enc"
-            f" extra-controls=\"controls,h264_i_frame_period={I_FRAME_PERIOD}"
-            f",video_bitrate={self._bitrate_bps}\""
+            f" ! {encoder}"
             f" ! video/x-h264,profile=baseline"
             f" ! h264parse config-interval=1"
             f" ! tee name=t"
@@ -206,6 +205,15 @@ class SenderPipeline:
             f" ! mp4mux"
             f" ! filesink location={rec_path}"
         )
+
+    def _encoder_description(self) -> str:
+        if self.encoder.split(maxsplit=1)[0] == "v4l2h264enc":
+            return (
+                f"{self.encoder} name=enc"
+                f" extra-controls=\"controls,h264_i_frame_period={I_FRAME_PERIOD}"
+                f",video_bitrate={self._bitrate_bps}\""
+            )
+        return f"{self.encoder} name=enc"
 
     def _next_recording_path(self) -> Path:
         ts = self._clock().strftime("%Y%m%d-%H%M%S")

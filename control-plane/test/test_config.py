@@ -147,6 +147,7 @@ class SenderConfigTests(unittest.TestCase):
             height = 480
             framerate = 30
             bitrate = 2500000
+            encoder = "x264enc tune=zerolatency"
             start_stream_on_boot = true
 
             [recording]
@@ -164,6 +165,7 @@ class SenderConfigTests(unittest.TestCase):
         self.assertEqual(cfg.controller_ip, "10.42.0.1")
         self.assertEqual(cfg.controller_port, 6000)
         self.assertEqual(cfg.video.bitrate_bps, 2_500_000)
+        self.assertEqual(cfg.video.encoder, "x264enc tune=zerolatency")
         self.assertTrue(cfg.video.start_stream_on_boot)
         self.assertIsNotNone(cfg.uart)
         self.assertEqual(cfg.uart.device, "/dev/serial0")
@@ -188,6 +190,7 @@ class SenderConfigTests(unittest.TestCase):
         cfg = load_sender_config(path)
         self.assertIsNone(cfg.paired_fc)
         self.assertIsNone(cfg.uart)
+        self.assertEqual(cfg.video.encoder, "v4l2h264enc")
 
     def test_paired_fc_without_uart_raises(self):
         path = write_toml(

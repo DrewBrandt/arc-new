@@ -41,6 +41,7 @@ def _config(
             framerate=framerate,
             bitrate_bps=bitrate,
             recording_path=recording_path,
+            encoder="v4l2h264enc",
         ),
         uart=UartConfig(device="/dev/ttyAMA0"),
     )
@@ -138,6 +139,29 @@ class PipelineDescriptionTests(unittest.TestCase):
         self.assertIn("x264enc tune=zerolatency name=enc", desc)
         self.assertEqual(pipe.recording_dir, Path("/data/arc"))
         self.assertIn(str(Path("/data/arc") / "sender-c-20260508-123456.mp4"), desc)
+
+    def test_encoder_can_come_from_config(self):
+        cfg = _config()
+        cfg = SenderConfig(
+            addr=cfg.addr,
+            name=cfg.name,
+            paired_fc=cfg.paired_fc,
+            controller_ip=cfg.controller_ip,
+            controller_port=cfg.controller_port,
+            controller_addr=cfg.controller_addr,
+            video=VideoConfig(
+                width=cfg.video.width,
+                height=cfg.video.height,
+                framerate=cfg.video.framerate,
+                bitrate_bps=cfg.video.bitrate_bps,
+                encoder="x264enc tune=zerolatency speed-preset=ultrafast bitrate=1200",
+                recording_path=cfg.video.recording_path,
+            ),
+            uart=cfg.uart,
+        )
+
+        desc = SenderPipeline(cfg, clock=_fixed_clock()).build_pipeline_description()
+        self.assertIn("x264enc tune=zerolatency speed-preset=ultrafast bitrate=1200 name=enc", desc)
 
 
 class StateTransitionTests(unittest.TestCase):

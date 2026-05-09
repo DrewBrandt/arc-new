@@ -53,8 +53,9 @@ _EMPTY_SOURCE = protocol.ADDR_UNASSIGNED
 _LOCAL_SOURCE = protocol.ADDR_CONTROLLER
 _SUPPORTED_MIXERS = ("compositor", "glvideomixer")
 _DEFAULT_LOCAL_CAMERA = (
-    "libcamerasrc ! queue max-size-buffers=2 leaky=downstream ! videoconvert"
+    "libcamerasrc ! videoconvert"
     " ! video/x-raw,width=640,height=480,format=I420,framerate=30/1"
+    " ! queue max-size-buffers=2 leaky=downstream"
 )
 _BLACK_SOURCE = (
     "videotestsrc pattern=black is-live=true"

@@ -4,6 +4,7 @@ from contextlib import suppress
 
 from arc import protocol as p
 from arc.node import Node
+from arc.runtime import TcpServer
 from arc.tcp_link import QueuedTcpLink, TcpFrameLink, read_frame, write_frame
 
 
@@ -141,6 +142,9 @@ class TcpLinkTests(unittest.IsolatedAsyncioTestCase):
             await client_link.wait_closed()
             await asyncio.wait_for(client_task, timeout=1.0)
         finally:
+            if server_link is not None:
+                server_link.close()
+                await server_link.wait_closed()
             server.close()
             await server.wait_closed()
 
@@ -234,6 +238,30 @@ class TcpLinkTests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.wait_for(writer.wait_closed(), timeout=0.2)
             server.close()
             await server.wait_closed()
+
+    async def test_tcp_server_can_bind_link_from_first_frame_src(self):
+        received = []
+        link = QueuedTcpLink(received.append, reconnect_delay_s=0.01)
+        server = TcpServer(
+            "127.0.0.1",
+            0,
+            link_for_peer=lambda _ip: None,
+            link_for_frame=lambda frame: link if frame.src == p.ADDR_SENDER_C else None,
+        )
+        await server.start()
+        port = server._server.sockets[0].getsockname()[1]
+        try:
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            frame = sample_frame(seq=99)
+            await write_frame(writer, frame)
+            await wait_until(lambda: link.online)
+            await wait_until(lambda: received == [frame])
+            writer.close()
+            with suppress(OSError, ConnectionError):
+                await asyncio.wait_for(writer.wait_closed(), timeout=0.2)
+        finally:
+            await link.stop()
+            await server.stop()
 
 
 async def wait_until(predicate, timeout=1.0):

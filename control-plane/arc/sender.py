@@ -9,12 +9,16 @@ class doesn't own those transports, it just plugs them in as ``Link``s.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Callable
 
 from arc import messages, protocol
 from arc.health import Heartbeat, PeerHealth
 from arc.node import Node
 from arc.router import Link
 from arc.router import sender_routes
+
+
+VideoCommandHandler = Callable[["messages.VideoType", protocol.Frame], None]
 
 
 class SenderError(RuntimeError):
@@ -36,6 +40,7 @@ class Sender:
         first_seq: int = 0,
         heartbeat_interval_s: float = 1.0,
         peer_timeout_s: float = 3.0,
+        video_command_handler: VideoCommandHandler | None = None,
     ) -> None:
         self.addr = addr
         self.paired_fc = paired_fc
@@ -55,6 +60,7 @@ class Sender:
         self.recording = True
         self.bitrate_bps: int | None = None
         self.last_command: protocol.Frame | None = None
+        self.video_command_handler = video_command_handler
 
         peers: tuple[int, ...] = (controller_addr,)
         if paired_fc is not None:
@@ -138,3 +144,6 @@ class Sender:
             raise SenderError("Sender received its own STATUS_REPORT")
         else:
             raise SenderError(f"unhandled VIDEO type {video_type!r}")
+
+        if self.video_command_handler is not None:
+            self.video_command_handler(video_type, frame)

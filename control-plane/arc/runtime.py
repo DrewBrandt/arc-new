@@ -96,10 +96,12 @@ class TcpServer:
         host: str,
         port: int,
         link_for_peer: Callable[[str], QueuedTcpLink | None],
+        link_for_frame: Callable[[protocol.Frame], QueuedTcpLink | None] | None = None,
     ) -> None:
         self.host = host
         self.port = port
         self.link_for_peer = link_for_peer
+        self.link_for_frame = link_for_frame
         self._server: asyncio.base_events.Server | None = None
 
     async def start(self) -> None:
@@ -117,6 +119,22 @@ class TcpServer:
         peer = writer.get_extra_info("peername")
         peer_ip = peer[0] if peer else ""
         link = self.link_for_peer(peer_ip)
+        if link is None and self.link_for_frame is not None:
+            try:
+                first = await asyncio.wait_for(tcp_read_frame(reader), timeout=3.0)
+            except (
+                asyncio.TimeoutError,
+                EOFError,
+                asyncio.IncompleteReadError,
+                protocol.ArcProtocolError,
+            ):
+                first = None
+            if first is not None:
+                link = self.link_for_frame(first)
+                if link is not None:
+                    result = link.on_frame(first)
+                    if result is not None:
+                        await result
         if link is None:
             writer.close()
             with contextlib.suppress(OSError):

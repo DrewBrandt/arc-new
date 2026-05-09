@@ -7,6 +7,10 @@
 #   sudo ./setup.sh controller   # for the receiver/controller Pi
 #   sudo ./setup.sh sender       # for the camera/sender Pis
 #
+# Useful options:
+#   sudo ./setup.sh sender --addr 0x12 --name sender-c --paired-fc 0x03
+#   sudo ./setup.sh controller --senders "0x12:sender-c:arcpi2.local:0x03,0x13:sender-l1:arcpi3.local:0x04"
+#
 # Run as root.
 
 set -e
@@ -28,6 +32,17 @@ FLIGHT_PSK="IREC2025!"
 # UART baud rate (must match flight computer firmware)
 UART_BAUD=115200
 
+# mDNS host for the Controller. Senders use this in their config.
+CONTROLLER_HOST="arcpi1.local"
+
+# Default Controller fleet. Override with --senders for your actual bench.
+# Format: addr:name:host:paired_fc, where paired_fc may be empty.
+CONTROLLER_SENDERS="0x12:sender-c:arcpi2.local:0x03,0x13:sender-l1:arcpi3.local:0x04,0x14:sender-l2:arcpi4.local:,0x15:sender-ground:arcpi5.local:"
+
+SENDER_ADDR=""
+SENDER_NAME=""
+SENDER_PAIRED_FC=""
+
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
@@ -46,6 +61,21 @@ require_root() {
         error "Please run as root (sudo)"
         exit 1
     fi
+}
+
+usage() {
+    cat >&2 <<EOF
+Usage: sudo $0 {controller|sender} [options]
+
+Controller options:
+  --senders LIST          addr:name:host:paired_fc entries, comma-separated
+
+Sender options:
+  --addr ADDR             Sender ARC address, e.g. 0x12
+  --name NAME             Sender name, e.g. sender-c
+  --paired-fc ADDR        Paired FC address, e.g. 0x03. Use "none" for video-only.
+  --controller-host HOST  Controller mDNS host (default: arcpi1.local)
+EOF
 }
 
 # Idempotent apt install -- only installs missing packages
@@ -109,9 +139,46 @@ require_root
 
 ROLE="${1:-}"
 if [ "$ROLE" != "controller" ] && [ "$ROLE" != "sender" ]; then
-    error "Usage: sudo $0 {controller|sender}"
+    usage
     exit 1
 fi
+shift
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --addr)
+            SENDER_ADDR="${2:-}"
+            shift 2
+            ;;
+        --name)
+            SENDER_NAME="${2:-}"
+            shift 2
+            ;;
+        --paired-fc)
+            SENDER_PAIRED_FC="${2:-}"
+            shift 2
+            ;;
+        --controller-host)
+            CONTROLLER_HOST="${2:-}"
+            shift 2
+            ;;
+        --senders)
+            CONTROLLER_SENDERS="${2:-}"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            error "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "=================================================="
 echo "  ARC Setup v3.0  --  role: $ROLE"
@@ -132,6 +199,9 @@ apt_install \
     python3-gi \
     python3-gst-1.0 \
     python3-serial \
+    python3-serial-asyncio \
+    avahi-daemon \
+    libnss-mdns \
     gstreamer1.0-tools \
     gstreamer1.0-plugins-base \
     gstreamer1.0-plugins-good \
@@ -255,6 +325,7 @@ EOF
 fi
 
 systemctl restart chrony || warn "chrony restart failed (may need reboot)"
+systemctl enable --now avahi-daemon || warn "avahi-daemon enable failed"
 
 # ----------------------------------------------------------------------
 # Application directory
@@ -265,10 +336,155 @@ info "Creating application directory at $APP_DIR..."
 mkdir -p "$APP_DIR"
 chown "${SUDO_USER:-pi}:${SUDO_USER:-pi}" "$APP_DIR"
 
+if [ -d "${SCRIPT_DIR}/control-plane/arc" ]; then
+    info "Installing control-plane package to ${APP_DIR}/control-plane..."
+    rm -rf "${APP_DIR}/control-plane"
+    mkdir -p "${APP_DIR}/control-plane"
+    cp -a "${SCRIPT_DIR}/control-plane/arc" "${APP_DIR}/control-plane/"
+    chown -R "${SUDO_USER:-pi}:${SUDO_USER:-pi}" "${APP_DIR}/control-plane"
+else
+    warn "Could not find ${SCRIPT_DIR}/control-plane/arc; place code in ${APP_DIR}/control-plane before starting services."
+fi
+
+CONFIG_DIR="/etc/arc"
+mkdir -p "$CONFIG_DIR"
+
+infer_sender_addr_from_hostname() {
+    local host digit
+    host="$(hostname)"
+    digit="$(printf '%s' "$host" | grep -o '[0-9]' | tail -n 1 || true)"
+    if [ -n "$digit" ]; then
+        printf '0x1%s' "$digit"
+    else
+        printf '0x12'
+    fi
+}
+
+sender_name_for_addr() {
+    case "$1" in
+        0x11|17) printf 'sender-n' ;;
+        0x12|18) printf 'sender-c' ;;
+        0x13|19) printf 'sender-l1' ;;
+        0x14|20) printf 'sender-l2' ;;
+        0x15|21) printf 'sender-ground' ;;
+        *) printf 'sender-%s' "$1" ;;
+    esac
+}
+
+default_paired_fc_for_addr() {
+    case "$1" in
+        0x12|18) printf '0x03' ;;
+        0x13|19) printf '0x04' ;;
+        *) printf '' ;;
+    esac
+}
+
+write_controller_config() {
+    local path="${CONFIG_DIR}/controller.toml"
+    if [ -f "$path" ]; then
+        info "$path already exists, leaving it unchanged"
+        return
+    fi
+    info "Writing default Controller config to $path"
+    cat > "$path" <<EOF
+[node]
+address = 0x10
+
+[uart]
+device = "/dev/serial0"
+baud = ${UART_BAUD}
+
+[overlay]
+callsign = "KD3BBP"
+
+[controller]
+listen_port = 6000
+
+[layouts.local_full]
+slot_0 = { xpos = 0, ypos = 0, width = 1280, height = 480, alpha = 1.0 }
+slot_1 = { alpha = 0.0 }
+
+[layouts.remote_full]
+slot_0 = { alpha = 0.0 }
+slot_1 = { xpos = 0, ypos = 0, width = 1280, height = 480, alpha = 1.0 }
+
+[layouts.split]
+slot_0 = { xpos = 0, ypos = 0, width = 640, height = 480, alpha = 1.0 }
+slot_1 = { xpos = 640, ypos = 0, width = 640, height = 480, alpha = 1.0 }
+
+EOF
+    IFS=',' read -ra sender_entries <<< "$CONTROLLER_SENDERS"
+    for entry in "${sender_entries[@]}"; do
+        IFS=':' read -r addr name host paired_fc <<< "$entry"
+        [ -n "$addr" ] || continue
+        cat >> "$path" <<EOF
+[[senders]]
+id = ${addr}
+name = "${name}"
+ip = "${host}"
+EOF
+        if [ -n "$paired_fc" ] && [ "$paired_fc" != "none" ]; then
+            echo "paired_fc = ${paired_fc}" >> "$path"
+        fi
+        echo "" >> "$path"
+    done
+}
+
+write_sender_config() {
+    local path="${CONFIG_DIR}/sender.toml"
+    if [ -f "$path" ]; then
+        info "$path already exists, leaving it unchanged"
+        return
+    fi
+    SENDER_ADDR="${SENDER_ADDR:-$(infer_sender_addr_from_hostname)}"
+    SENDER_NAME="${SENDER_NAME:-$(sender_name_for_addr "$SENDER_ADDR")}"
+    if [ -z "$SENDER_PAIRED_FC" ]; then
+        SENDER_PAIRED_FC="$(default_paired_fc_for_addr "$SENDER_ADDR")"
+    fi
+    info "Writing default Sender config to $path"
+    cat > "$path" <<EOF
+[node]
+address = ${SENDER_ADDR}
+name = "${SENDER_NAME}"
+EOF
+    if [ -n "$SENDER_PAIRED_FC" ] && [ "$SENDER_PAIRED_FC" != "none" ]; then
+        echo "paired_fc = ${SENDER_PAIRED_FC}" >> "$path"
+    fi
+    cat >> "$path" <<EOF
+
+[controller]
+ip = "${CONTROLLER_HOST}"
+port = 6000
+
+[video]
+width = 640
+height = 480
+framerate = 30
+bitrate = 2500000
+
+[recording]
+path = "/var/arc/recordings/"
+EOF
+    if [ -n "$SENDER_PAIRED_FC" ] && [ "$SENDER_PAIRED_FC" != "none" ]; then
+        cat >> "$path" <<EOF
+
+[uart]
+device = "/dev/serial0"
+baud = ${UART_BAUD}
+EOF
+    fi
+}
+
 # Recording directory (senders only, but harmless on controller)
 if [ "$ROLE" = "sender" ]; then
     mkdir -p /var/arc/recordings
     chown "${SUDO_USER:-pi}:${SUDO_USER:-pi}" /var/arc/recordings
+fi
+
+if [ "$ROLE" = "controller" ]; then
+    write_controller_config
+else
+    write_sender_config
 fi
 
 # ----------------------------------------------------------------------
@@ -278,11 +494,11 @@ fi
 if [ "$ROLE" = "controller" ]; then
     SERVICE_NAME="arc-controller"
     SERVICE_DESC="ARC Controller (video router and FC interface)"
-    EXEC_START="/usr/bin/python3 ${APP_DIR}/controller.py"
+    EXEC_START="/usr/bin/python3 -m arc.controller_main --config ${CONFIG_DIR}/controller.toml"
 else
     SERVICE_NAME="arc-sender"
     SERVICE_DESC="ARC Sender (camera capture and stream)"
-    EXEC_START="/usr/bin/python3 ${APP_DIR}/sender.py"
+    EXEC_START="/usr/bin/python3 -m arc.sender_main --config ${CONFIG_DIR}/sender.toml"
 fi
 
 info "Installing systemd service: ${SERVICE_NAME}.service"
@@ -296,7 +512,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=${SUDO_USER:-pi}
-WorkingDirectory=${APP_DIR}
+WorkingDirectory=${APP_DIR}/control-plane
+Environment=PYTHONUNBUFFERED=1
 ExecStart=${EXEC_START}
 Restart=on-failure
 RestartSec=2
@@ -310,8 +527,8 @@ EOF
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}.service"
 
-warn "Service installed but NOT started -- start it after you've placed your"
-warn "Python code in ${APP_DIR}/ and rebooted to apply UART/camera config."
+warn "Service installed and enabled but NOT started."
+warn "Reboot first to apply UART/camera config, then the service will start automatically."
 
 # ----------------------------------------------------------------------
 # Done
@@ -323,12 +540,12 @@ echo "  Setup complete -- role: $ROLE"
 echo "=================================================="
 echo ""
 echo "Next steps:"
-echo "  1. Place your Python code in ${APP_DIR}/"
-echo "  2. Reboot to apply UART, camera, and wifi config:"
+echo "  1. Review generated config in ${CONFIG_DIR}/"
+echo "  2. Reboot to apply UART, camera, wifi, and service config:"
 echo "       sudo reboot"
-echo "  3. After reboot, start the service:"
-echo "       sudo systemctl start ${SERVICE_NAME}"
-echo "  4. Check logs with:"
+echo "  3. Check service status:"
+echo "       systemctl status ${SERVICE_NAME}"
+echo "  4. Follow logs with:"
 echo "       journalctl -u ${SERVICE_NAME} -f"
 echo ""
 if [ "$ROLE" = "controller" ]; then

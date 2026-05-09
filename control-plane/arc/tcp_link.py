@@ -39,6 +39,9 @@ class TcpFrameLink:
                         await result
         except (EOFError, asyncio.IncompleteReadError, ConnectionError):
             self.closed = True
+        finally:
+            self.writer.close()
+            await _wait_closed_quietly(self.writer)
 
     def close(self) -> None:
         self.writer.close()

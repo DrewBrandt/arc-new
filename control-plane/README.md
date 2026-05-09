@@ -16,6 +16,15 @@ arc/uart_link.py       asyncio UART/serial COBS frame transport
 arc/sender_link.py     Controller-side wrapper around one Sender
 arc/controller.py      Controller orchestration shell
 arc/sender.py          Sender orchestration shell
+arc/pipeline_controller.py
+                       Controller GStreamer pipeline (compositor +
+                       textoverlay + kmssink). gi/Gst imported lazily.
+arc/pipeline_sender.py Sender GStreamer pipeline (libcamerasrc +
+                       v4l2h264enc + tee + valves to udpsink and
+                       mp4mux/filesink). gi/Gst imported lazily.
+arc/pipeline_errors.py Shared PipelineError raised by both pipelines.
+arc/video_ports.py     Deterministic Sender video port mapping
+                       (0x12 -> UDP/RTP 5012).
 arc/config.py          TOML config loader (Python 3.11+ tomllib)
 arc/runtime.py         asyncio glue: serial open, tick loop, TCP server
 arc/controller_main.py Controller process entrypoint
@@ -31,7 +40,7 @@ Tests:
 python -m unittest discover -s test
 ```
 
-> One test (`test.test_tcp_link.TcpLinkTests.test_tcp_frame_link_round_trip_ack`) is flaky on Windows due to `ProactorEventLoop` cleanup behaviour and may hang. The other 89 tests pass cleanly. On Linux the full suite runs to completion.
+> One test (`test.test_tcp_link.TcpLinkTests.test_tcp_frame_link_round_trip_ack`) has been flaky on Windows due to `ProactorEventLoop` cleanup behaviour and may hang. The other 133 tests pass cleanly on every run. On Linux the full suite runs to completion.
 
 Controller process:
 
@@ -44,6 +53,13 @@ Sender process:
 ```
 python -m arc.sender_main --config /etc/arc/sender.toml
 ```
+
+Remote Sender video uses deterministic Controller UDP/RTP ports derived
+from the Sender address: Sender-N `0x11 -> 5011`, Sender-C `0x12 -> 5012`,
+Sender-L1 `0x13 -> 5013`, Sender-L2 `0x14 -> 5014`, and Sender-GND
+`0x15 -> 5015`. The Sender pipeline derives its `udpsink` port from its
+own address; the Controller derives each `udpsrc` port from the selected
+source address.
 
 ## Config
 
@@ -98,5 +114,9 @@ baud = 115200
 - Python 3.11+ (uses `tomllib`)
 - `pyserial-asyncio` for UART links (imported lazily; tests don't require it)
 
-GStreamer is intentionally out of scope here — `Sender.transmitting` /
-`Sender.recording` expose the state a video module would key off of.
+GStreamer is wired into the orchestrators on a best-effort basis:
+`controller_main` builds a `ControllerPipeline` and dispatches FC_VIDEO
+commands to it; `sender_main` builds a `SenderPipeline` and dispatches
+VIDEO commands. If `gi`/Gst is unavailable (typical on dev machines)
+the pipeline raises `PipelineError`, the adapter logs it, and the
+control plane keeps running. On the Pi the pipelines come up live.

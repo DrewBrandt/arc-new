@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Callable
 
 from arc import messages, protocol
 from arc.health import Heartbeat, PeerHealth
 from arc.node import Node
 from arc.router import Link, controller_routes
 from arc.sender_link import SenderLink, SenderLinkError
+
+
+FcVideoHandler = Callable[["messages.FcVideoType", protocol.Frame], None]
 
 
 class ControllerError(RuntimeError):
@@ -35,6 +39,7 @@ class Controller:
         fc_n_addr: int = protocol.ADDR_FC_N,
         heartbeat_interval_s: float = 1.0,
         peer_timeout_s: float = 3.0,
+        fc_video_handler: FcVideoHandler | None = None,
     ) -> None:
         self.node = Node(
             addr=protocol.ADDR_CONTROLLER,
@@ -60,6 +65,7 @@ class Controller:
             timeout_s=peer_timeout_s,
         )
         self.unhandled_frames: list[protocol.Frame] = []
+        self.fc_video_handler = fc_video_handler
 
     def set_links(self, links: Mapping[str, Link]) -> None:
         self.node.set_links(links)
@@ -123,4 +129,21 @@ class Controller:
             # PeerHealth already absorbed it via observe(); nothing else to do.
             return
 
+        if frame.family == protocol.FAMILY_FC_VIDEO:
+            self._handle_fc_video(frame)
+            return
+
         self.unhandled_frames.append(frame)
+
+    def _handle_fc_video(self, frame: protocol.Frame) -> None:
+        try:
+            fc_video_type = messages.FcVideoType(frame.type)
+        except ValueError as exc:
+            raise ControllerError(
+                f"unknown FC_VIDEO type 0x{frame.type:02x}"
+            ) from exc
+
+        if self.fc_video_handler is None:
+            self.unhandled_frames.append(frame)
+            return
+        self.fc_video_handler(fc_video_type, frame)

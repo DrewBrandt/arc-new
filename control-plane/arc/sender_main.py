@@ -8,10 +8,9 @@ Wires together:
 - A periodic tick driving reliability retries, heartbeat emission, and
   peer-liveness checks.
 - A periodic STATUS_REPORT emission to the Controller.
-
-GStreamer pipeline construction is out of scope here; the Sender state
-exposed by ``sender.transmitting``/``sender.recording`` is what a video
-module reads to decide when to start/stop encoding.
+- A ``SenderPipeline`` driven by VIDEO commands. Pipeline lifecycle is
+  best-effort: if GStreamer is unavailable (dev machine) the control
+  plane still runs and pipeline calls are logged-and-swallowed.
 """
 
 from __future__ import annotations
@@ -22,8 +21,9 @@ import logging
 import signal
 from pathlib import Path
 
-from arc import messages
+from arc import messages, protocol
 from arc.config import SenderConfig, load_sender_config
+from arc.pipeline_sender import PipelineError, SenderPipeline
 from arc.runtime import (
     QueuedTcpLink,
     QueuedUartLink,
@@ -38,13 +38,44 @@ log = logging.getLogger("arc.sender")
 STATUS_REPORT_INTERVAL_S = 1.0
 
 
-async def run(cfg: SenderConfig, status_provider=None) -> None:
+def make_video_command_handler(pipeline: SenderPipeline):
+    """Adapter: VIDEO commands -> SenderPipeline state transitions.
+
+    Pipeline failures (e.g., GStreamer not installed on a dev machine)
+    are logged but never propagate; the control plane keeps running.
+    """
+
+    def on_video_command(
+        video_type: messages.VideoType, frame: protocol.Frame
+    ) -> None:
+        try:
+            if video_type is messages.VideoType.START_STREAM:
+                pipeline.start_stream()
+            elif video_type is messages.VideoType.STOP_STREAM:
+                pipeline.stop_stream()
+            elif video_type is messages.VideoType.HARD_STOP:
+                pipeline.hard_stop()
+            elif video_type is messages.VideoType.SET_BITRATE:
+                bitrate = messages.SetBitrate.decode(frame.payload).bitrate_bps
+                pipeline.set_bitrate(bitrate)
+        except PipelineError:
+            log.exception(
+                "pipeline failed to apply VIDEO command %s", video_type.name
+            )
+
+    return on_video_command
+
+
+async def run(cfg: SenderConfig, status_provider=None, *, pipeline=None) -> None:
+    if pipeline is None:
+        pipeline = SenderPipeline(cfg)
     sender = Sender(
         addr=cfg.addr,
         paired_fc=cfg.paired_fc,
         controller_addr=cfg.controller_addr,
         heartbeat_interval_s=cfg.heartbeat_interval_s,
         peer_timeout_s=cfg.peer_timeout_s,
+        video_command_handler=make_video_command_handler(pipeline),
     )
 
     controller_link = QueuedTcpLink(lambda f: sender.receive(f, _now()))
@@ -91,6 +122,10 @@ async def run(cfg: SenderConfig, status_provider=None) -> None:
     try:
         await stop_event.wait()
     finally:
+        try:
+            pipeline.hard_stop()
+        except PipelineError:
+            log.exception("pipeline hard_stop on shutdown failed")
         await controller_link.stop()
         if fc_link is not None:
             await fc_link.stop()

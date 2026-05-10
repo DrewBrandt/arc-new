@@ -55,6 +55,15 @@ class FakeElement:
         self.props[name] = value
 
 
+class FakeSelector(FakeElement):
+    def __init__(self):
+        super().__init__()
+        self.pads = {f"sink_{idx}": FakePad() for idx in range(8)}
+
+    def get_static_pad(self, name):
+        return self.pads.get(name)
+
+
 class FakeCompositor:
     def __init__(self):
         self.pads = {"sink_0": FakePad(), "sink_1": FakePad(), "sink_2": FakePad()}
@@ -67,10 +76,14 @@ class FakeGstPipeline:
     def __init__(self):
         self.comp = FakeCompositor()
         self.overlay = FakeElement()
+        self.selectors = {
+            "slot0_selector": FakeSelector(),
+            "slot1_selector": FakeSelector(),
+        }
         self.states = []
 
     def get_by_name(self, name):
-        return {"comp": self.comp, "overlay": self.overlay}.get(name)
+        return {"comp": self.comp, "overlay": self.overlay, **self.selectors}.get(name)
 
     def set_state(self, state):
         self.states.append(state)
@@ -318,9 +331,25 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertIn("textoverlay name=overlay", desc)
         self.assertIn("kmssink", desc)
 
+    def test_selector_switch_mode_wires_input_selectors(self):
+        pipe = ControllerPipeline(_config(), switch_mode="selector")
+        desc = pipe.build_pipeline_description()
+
+        self.assertIn("input-selector name=slot0_selector", desc)
+        self.assertIn("input-selector name=slot1_selector", desc)
+        self.assertIn("source_00_tee", desc)
+        self.assertIn("source_10_tee", desc)
+        self.assertIn("source_12_tee", desc)
+        self.assertIn("slot0_selector.sink_2", desc)
+        self.assertIn("slot1_selector.sink_2", desc)
+
     def test_unknown_mixer_raises(self):
         with self.assertRaises(PipelineError):
             ControllerPipeline(_config(), mixer="bogusmixer")
+
+    def test_unknown_switch_mode_raises(self):
+        with self.assertRaises(PipelineError):
+            ControllerPipeline(_config(), switch_mode="bogus")
 
     def test_set_source_rebuilds_live_pipeline_and_preserves_state(self):
         import arc.pipeline_controller as pc
@@ -375,6 +404,30 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertEqual(FakeGst.pipelines[1].states, ["PLAYING"])
         self.assertEqual(pipe.slot_sources[0].addr, protocol.ADDR_SENDER_C)
         self.assertEqual(pipe.slot_sources[1].addr, protocol.ADDR_CONTROLLER)
+
+    def test_selector_switch_mode_changes_active_pads_without_rebuild(self):
+        import arc.pipeline_controller as pc
+
+        original = pc._import_gstreamer
+        FakeGst.launched = []
+        FakeGst.pipelines = []
+        pc._import_gstreamer = lambda: FakeGst
+        try:
+            pipe = ControllerPipeline(_config(), switch_mode="selector")
+            pipe.start()
+            pipe.set_sources({
+                0: protocol.ADDR_SENDER_C,
+                1: protocol.ADDR_CONTROLLER,
+            })
+        finally:
+            pc._import_gstreamer = original
+
+        self.assertEqual(len(FakeGst.launched), 1)
+        self.assertEqual(FakeGst.pipelines[0].states, ["PLAYING"])
+        slot0 = FakeGst.pipelines[0].selectors["slot0_selector"]
+        slot1 = FakeGst.pipelines[0].selectors["slot1_selector"]
+        self.assertIs(slot0.props["active-pad"], slot0.pads["sink_2"])
+        self.assertIs(slot1.props["active-pad"], slot1.pads["sink_1"])
 
 
 if __name__ == "__main__":

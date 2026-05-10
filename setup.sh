@@ -489,6 +489,7 @@ listen_port = 6000
 mixer = "glvideomixer"
 sink = "${CONTROLLER_VIDEO_SINK}"
 startup_layout = "split"
+switch_mode = "selector"
 
 [layouts.local_full]
 slot_0 = { xpos = 40, ypos = 0, width = 640, height = 480, alpha = 1.0 }

@@ -99,6 +99,7 @@ listen_port = 6000
 mixer = "glvideomixer"
 sink = "kmssink driver-name=drm-rp1-vec sync=false"
 startup_layout = "split"
+switch_mode = "selector"
 
 [layouts.local_full]
 slot_0 = { xpos = 40, ypos = 0, width = 640, height = 480, alpha = 1.0 }
@@ -186,9 +187,11 @@ existing `/etc/arc/controller.toml`.
   `python -m arc.controller_cli cycle 1 5 sender-c sender-l1`.
   Use `python -m arc.controller_cli rotate 5 local sender-c sender-l1`
   to rotate three pictures through main, offscreen/rest, and PIP. Rotation
-  batches the main/PIP source changes into one pipeline rebuild per step, but
-  source switching can still briefly blank because the current implementation
-  rebuilds the GStreamer graph.
+  uses the Controller's selector switch mode, which keeps the KMS/compositor
+  pipeline running and flips active input-selector pads instead of rebuilding
+  the graph. This is smoother, but it means configured remote UDP/decode
+  branches exist in the running graph; avoid configuring extra unused senders
+  on underpowered controller hardware.
 
 ## Dependencies
 

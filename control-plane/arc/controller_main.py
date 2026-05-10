@@ -452,6 +452,7 @@ async def run(cfg: ControllerConfig, *, pipeline=None) -> None:
             sink=cfg.video.sink,
             mixer=cfg.video.mixer,
             startup_layout=cfg.video.startup_layout,
+            switch_mode=cfg.video.switch_mode,
         )
     layout_names = list(cfg.layouts.keys())
 

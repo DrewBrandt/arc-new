@@ -52,6 +52,7 @@ _SLOT_COUNT = 2
 _EMPTY_SOURCE = protocol.ADDR_UNASSIGNED
 _LOCAL_SOURCE = protocol.ADDR_CONTROLLER
 _SUPPORTED_MIXERS = ("compositor", "glvideomixer")
+_SUPPORTED_SWITCH_MODES = ("rebuild", "selector")
 _DEFAULT_LOCAL_CAMERA = (
     "libcamerasrc ! videoconvert"
     " ! video/x-raw,width=640,height=480,format=I420,framerate=30/1"
@@ -61,6 +62,7 @@ _BLACK_SOURCE = (
     "videotestsrc pattern=black is-live=true"
     " ! video/x-raw,width=640,height=480,framerate=30/1"
     " ! videoconvert"
+    " ! video/x-raw,format=I420"
 )
 _BACKGROUND_SOURCE = (
     "videotestsrc pattern=black is-live=true"
@@ -153,25 +155,41 @@ class ControllerPipeline:
         sink: str = "kmssink sync=false",
         mixer: str = "compositor",
         startup_layout: str | None = None,
+        switch_mode: str | None = None,
     ) -> None:
         if mixer not in _SUPPORTED_MIXERS:
             raise PipelineError(
                 f"unsupported mixer {mixer!r}; expected one of {_SUPPORTED_MIXERS}"
             )
+        switch_mode = switch_mode or config.video.switch_mode
+        if switch_mode not in _SUPPORTED_SWITCH_MODES:
+            raise PipelineError(
+                f"unsupported switch_mode {switch_mode!r}; expected one of {_SUPPORTED_SWITCH_MODES}"
+            )
         self.config = config
         self.callsign = callsign or config.callsign
         self._sender_ips = {sender.addr: sender.ip for sender in config.senders}
+        self._selector_sources = (
+            _EMPTY_SOURCE,
+            _LOCAL_SOURCE,
+            *(sender.addr for sender in config.senders),
+        )
+        self._selector_pad_by_source = {
+            source: f"sink_{idx}" for idx, source in enumerate(self._selector_sources)
+        }
         self._slot_sources = [
             SourceProps(_LOCAL_SOURCE, slot_0_source or _DEFAULT_LOCAL_CAMERA),
             SourceProps(_EMPTY_SOURCE, slot_1_source or _BLACK_SOURCE),
         ]
         self.sink_factory = sink
         self.mixer = mixer
+        self.switch_mode = switch_mode
         self.startup_layout = startup_layout or config.video.startup_layout
         self.layouts = parse_layouts(config.layouts)
         self._pipeline: Any = None
         self._compositor: Any = None
         self._textoverlay: Any = None
+        self._selectors: list[Any] = []
         self._gst: Any = None
         self._current_layout: str | None = None
         self._overlay_text: str = self.callsign
@@ -200,12 +218,21 @@ class ControllerPipeline:
             raise PipelineError(
                 "pipeline missing required elements 'comp' or 'overlay'"
             )
+        self._selectors = []
+        if self.switch_mode == "selector":
+            for slot_id in range(_SLOT_COUNT):
+                selector = self._pipeline.get_by_name(f"slot{slot_id}_selector")
+                if selector is None:
+                    raise PipelineError(f"pipeline missing selector for slot {slot_id}")
+                self._selectors.append(selector)
 
         self._textoverlay.set_property("text", self._overlay_text)
         initial = self._desired_layout()
         if initial is not None:
             self._apply_layout_now(initial)
             self._current_layout = initial.name
+        if self.switch_mode == "selector":
+            self._apply_selector_sources(range(_SLOT_COUNT))
 
         ret = self._pipeline.set_state(Gst.State.PLAYING)
         if ret == Gst.StateChangeReturn.FAILURE:
@@ -221,6 +248,7 @@ class ControllerPipeline:
         self._pipeline = None
         self._compositor = None
         self._textoverlay = None
+        self._selectors = []
 
     def set_layout(self, name: str) -> None:
         """Switch to a named layout. Safe to call from asyncio."""
@@ -239,13 +267,7 @@ class ControllerPipeline:
             self._textoverlay.set_property("text", text)
 
     def set_source(self, slot_id: int, source_addr: int) -> None:
-        """Set one compositor slot source and rebuild if already running.
-
-        Dynamic source switching in the design doc requires changing the
-        upstream source branch of a compositor sink. The conservative Pi-safe
-        implementation records the requested source and rebuilds the pipeline
-        when live, preserving the current layout and overlay text.
-        """
+        """Set one compositor slot source."""
 
         self.set_sources({slot_id: source_addr})
 
@@ -264,6 +286,12 @@ class ControllerPipeline:
         if not changed:
             return
         was_running = self._pipeline is not None
+        if was_running and self.switch_mode == "selector":
+            for slot_id, source in changed.items():
+                self._slot_sources[slot_id] = source
+            self._apply_selector_sources(changed.keys())
+            return
+
         if was_running:
             self.stop()
         for slot_id, source in changed.items():
@@ -303,6 +331,8 @@ class ControllerPipeline:
         else:
             mixer_chain = f"compositor name=comp ! {_OUTPUT_CAPS}"
             slot_tail = ""
+        if self.switch_mode == "selector":
+            return self._build_selector_pipeline_description(mixer_chain, slot_tail)
         return (
             f"{mixer_chain}"
             f" ! textoverlay name=overlay text=\"{callsign}\""
@@ -313,9 +343,37 @@ class ControllerPipeline:
             f" {self._slot_sources[1].description}{slot_tail} ! comp.sink_2"
         )
 
+    def _build_selector_pipeline_description(self, mixer_chain: str, slot_tail: str) -> str:
+        callsign = self.callsign.replace('"', '')
+        slot_branches = (
+            f" input-selector name=slot0_selector sync-streams=false ! queue max-size-buffers=2 leaky=downstream{slot_tail} ! comp.sink_1"
+            f" input-selector name=slot1_selector sync-streams=false ! queue max-size-buffers=2 leaky=downstream{slot_tail} ! comp.sink_2"
+        )
+        source_branches = []
+        for idx, source_addr in enumerate(self._selector_sources):
+            source = self._resolve_selector_source(source_addr)
+            tee_name = f"source_{source_addr:02x}_tee"
+            source_branches.append(
+                f" {source.description} ! tee name={tee_name}"
+                f" {tee_name}. ! queue max-size-buffers=2 leaky=downstream ! slot0_selector.sink_{idx}"
+                f" {tee_name}. ! queue max-size-buffers=2 leaky=downstream ! slot1_selector.sink_{idx}"
+            )
+        return (
+            f"{mixer_chain}"
+            f" ! textoverlay name=overlay text=\"{callsign}\""
+            f" font-desc=\"Sans 18\" valignment=top halignment=right"
+            f" ! {self.sink_factory}"
+            f" {_BACKGROUND_SOURCE}{slot_tail} ! comp.sink_0"
+            f"{slot_branches}"
+            f"{''.join(source_branches)}"
+        )
+
     def _resolve_source(self, slot_id: int, source_addr: int) -> SourceProps:
         if not 0 <= slot_id < _SLOT_COUNT:
             raise PipelineError(f"source slot {slot_id} out of range")
+        return self._resolve_selector_source(source_addr)
+
+    def _resolve_selector_source(self, source_addr: int) -> SourceProps:
         if source_addr == _EMPTY_SOURCE:
             return SourceProps(source_addr, _BLACK_SOURCE)
         if source_addr == _LOCAL_SOURCE:
@@ -326,6 +384,17 @@ class ControllerPipeline:
             source_addr,
             _remote_sender_source(video_port_for_sender(source_addr)),
         )
+
+    def _apply_selector_sources(self, slot_ids) -> None:
+        if not self._selectors:
+            return
+        for slot_id in slot_ids:
+            selector = self._selectors[slot_id]
+            pad_name = self._selector_pad_by_source[self._slot_sources[slot_id].addr]
+            pad = selector.get_static_pad(pad_name)
+            if pad is None:
+                raise PipelineError(f"selector slot {slot_id} missing pad {pad_name}")
+            selector.set_property("active-pad", pad)
 
     def _initial_layout(self) -> Layout | None:
         if self.startup_layout is not None:

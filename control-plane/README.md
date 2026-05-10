@@ -17,10 +17,10 @@ arc/sender_link.py     Controller-side wrapper around one Sender
 arc/controller.py      Controller orchestration shell
 arc/sender.py          Sender orchestration shell
 arc/pipeline_controller.py
-                       Controller GStreamer pipeline (compositor +
+                       Controller GStreamer pipeline (GL mixer +
                        textoverlay + kmssink). gi/Gst imported lazily.
 arc/pipeline_sender.py Sender GStreamer pipeline (libcamerasrc +
-                       v4l2h264enc + tee + valves to udpsink and
+                       configurable H.264 encoder + tee + valves to udpsink and
                        mp4mux/filesink). gi/Gst imported lazily.
 arc/pipeline_errors.py Shared PipelineError raised by both pipelines.
 arc/video_ports.py     Deterministic Sender video port mapping
@@ -39,8 +39,6 @@ Tests:
 ```
 python -m unittest discover -s test
 ```
-
-> One test (`test.test_tcp_link.TcpLinkTests.test_tcp_frame_link_round_trip_ack`) has been flaky on Windows due to `ProactorEventLoop` cleanup behaviour and may hang. The other 133 tests pass cleanly on every run. On Linux the full suite runs to completion.
 
 Controller process:
 
@@ -63,7 +61,8 @@ source address.
 
 ## Config
 
-See `arc/config.py` for the full schema. A minimal Controller TOML:
+See `arc/config.py` for the full schema. The setup script generates a
+bench-ready Pi 5 Controller config similar to:
 
 ```toml
 [node]
@@ -79,14 +78,35 @@ callsign = "KD3BBP"
 [controller]
 listen_port = 6000
 
+[video]
+mixer = "glvideomixer"
+sink = "kmssink driver-name=drm-rp1-vec sync=false"
+startup_layout = "split"
+
+[layouts.local_full]
+slot_0 = { xpos = 40, ypos = 0, width = 640, height = 480, alpha = 1.0 }
+slot_1 = { alpha = 0.0 }
+
+[layouts.split]
+slot_0 = { xpos = 40, ypos = 0, width = 640, height = 480, alpha = 1.0, z = 1 }
+slot_1 = { xpos = 420, ypos = 280, width = 240, height = 160, alpha = 1.0, z = 2 }
+
+[sources]
+slot_0 = 0x10
+slot_1 = 0x12
+
 [[senders]]
 id = 0x12
 name = "sender-c"
-ip = "10.42.0.12"
+ip = "arcpi2.local"
 paired_fc = 0x03
 ```
 
-A minimal Sender TOML:
+The Controller starts in split/PIP mode. If Sender-C is not online yet,
+slot 1 stays black; once the sender is observed on the control plane, the
+Controller starts its stream and rebuilds slot 1 to `udpsrc port=5012`.
+
+The setup script generates a Zero 2 W-friendly Sender config similar to:
 
 ```toml
 [node]
@@ -95,19 +115,44 @@ name = "sender-c"
 paired_fc = 0x03
 
 [controller]
-ip = "10.42.0.1"
+ip = "arcpi1.local"
 port = 6000
 
 [video]
 width = 640
 height = 480
-framerate = 30
-bitrate = 2_500_000
+framerate = 15
+bitrate = 1_200_000
+encoder = "x264enc tune=zerolatency speed-preset=ultrafast key-int-max=15 bitrate=1200"
+start_stream_on_boot = true
 
 [uart]
 device = "/dev/serial0"
 baud = 115200
 ```
+
+The software encoder is intentional for the current Raspberry Pi OS image:
+on the tested Zero 2 W, `bcm2835-codec`/`v4l2h264enc` failed to start
+streaming even with a fake source. If a future kernel/firmware restores
+hardware encode, set `encoder = "v4l2h264enc"` and raise bitrate/framerate
+as appropriate.
+
+## Hardware Notes
+
+- The tested Controller target is Raspberry Pi 5 using composite output.
+  Pi 5 composite is exposed through the RP1 VEC DRM driver, so the sink is
+  `kmssink driver-name=drm-rp1-vec sync=false`.
+- The setup script enables Pi 5 composite with
+  `dtoverlay=vc4-kms-v3d-pi5,composite`, `enable_tvout=1`, and
+  `video=Composite-1:720x480i,tv_mode=NTSC`.
+- Controller and Sender services boot in `multi-user.target` so desktop
+  components do not steal KMS, camera, or media devices.
+- Lab WiFi profiles are forced to 2.4 GHz (`802-11-wireless.band bg`) so
+  Zero 2 W senders can join them reliably. This also keeps a Pi 5 controller
+  on the 2.4 GHz copy of the ARC lab SSID; it is a per-profile setting, not a
+  global radio disable.
+- Sender video uses RTP/H.264 over UDP on deterministic ports: Sender-C
+  (`0x12`) sends to Controller UDP port `5012`.
 
 ## Dependencies
 

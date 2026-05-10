@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # ARC Setup Script v3.0
-# GStreamer-based video routing system for Raspberry Pi Zero 2 W
+# GStreamer-based video routing system for Pi 5 controller + Pi Zero 2 W senders
 #
 # Usage:
 #   sudo ./setup.sh controller   # for the receiver/controller Pi
@@ -94,7 +94,10 @@ apt_install() {
     fi
 }
 
-# Idempotent NetworkManager connection add
+# Idempotent NetworkManager connection add.
+# Force ARC-managed client profiles onto 2.4 GHz (`bg`). This matters for
+# Pi Zero 2 W senders, and it also keeps the Pi 5 controller from choosing a
+# 5 GHz copy of the lab SSID when both bands share the same name.
 nm_add_client() {
     local name="$1" ssid="$2" psk="$3" priority="$4"
     if nmcli -t -f NAME con show | grep -qx "$name"; then
@@ -129,6 +132,7 @@ nm_add_ap() {
         con-name "$name" \
         ssid "$ssid" \
         autoconnect "$autoconnect"
+    # Keep the flight AP on 2.4 GHz so every Zero 2 W sender can join it.
     nmcli connection modify "$name" \
         802-11-wireless.mode ap \
         802-11-wireless.band bg \
@@ -216,6 +220,9 @@ apt_install \
     gstreamer1.0-libav \
     gstreamer1.0-gl \
     gstreamer1.0-libcamera \
+    libdrm-tests \
+    tcpdump \
+    v4l-utils \
     rpicam-apps \
     ffmpeg \
     chrony
@@ -436,12 +443,25 @@ configure_controller_video_sink() {
     info "Controller video sink: ${CONTROLLER_VIDEO_SINK}"
 }
 
+first_controller_sender_addr() {
+    local first addr _rest
+    first="${CONTROLLER_SENDERS%%,*}"
+    IFS=':' read -r addr _rest <<< "$first"
+    if [ -n "$addr" ]; then
+        printf '%s' "$addr"
+    else
+        printf '0x00'
+    fi
+}
+
 write_controller_config() {
     local path="${CONFIG_DIR}/controller.toml"
     if [ -f "$path" ]; then
         info "$path already exists, leaving it unchanged"
         return
     fi
+    local initial_remote_source
+    initial_remote_source="$(first_controller_sender_addr)"
     info "Writing default Controller config to $path"
     cat > "$path" <<EOF
 [node]
@@ -460,7 +480,7 @@ listen_port = 6000
 [video]
 mixer = "glvideomixer"
 sink = "${CONTROLLER_VIDEO_SINK}"
-startup_layout = "local_full"
+startup_layout = "split"
 
 [layouts.local_full]
 slot_0 = { xpos = 40, ypos = 0, width = 640, height = 480, alpha = 1.0 }
@@ -476,7 +496,7 @@ slot_1 = { xpos = 420, ypos = 280, width = 240, height = 160, alpha = 1.0, z = 2
 
 [sources]
 slot_0 = 0x10
-slot_1 = 0x00
+slot_1 = ${initial_remote_source}
 
 EOF
     IFS=',' read -ra sender_entries <<< "$CONTROLLER_SENDERS"
@@ -552,11 +572,11 @@ fi
 if [ "$ROLE" = "controller" ]; then
     configure_controller_video_sink
     write_controller_config
-    info "Setting controller to boot without the desktop so KMS video is available..."
-    systemctl set-default multi-user.target
 else
     write_sender_config
 fi
+info "Setting system to boot without the desktop so camera/KMS devices are available..."
+systemctl set-default multi-user.target
 
 # ----------------------------------------------------------------------
 # Systemd service for the application

@@ -1,15 +1,14 @@
 """Sender-side GStreamer pipeline wrapper.
 
-Captures from the local CSI camera, encodes once with ``v4l2h264enc``,
-and tees the encoded H.264 stream to two branches gated by ``valve``
-elements:
+Captures from the local CSI camera, encodes once with the configured
+H.264 encoder, and tees the encoded stream to two branches gated by
+``valve`` elements:
 
   - TX:     ``rtph264pay → udpsink``  (Controller:50XX) -- gated by ``tx_valve``
   - Record: ``mp4mux  → filesink``    (recording dir)   -- gated by ``rec_valve``
 
-A single encoder feeds both branches so the VideoCore IV encode budget
-is spent once. Each branch's valve can ``drop=true`` to suppress output
-without tearing the pipeline down.
+A single encoder feeds both branches. Each branch's valve can
+``drop=true`` to suppress output without tearing the pipeline down.
 
 State semantics mirror the control-plane VIDEO commands and the
 ``Sender.transmitting`` / ``Sender.recording`` flags:
@@ -165,10 +164,10 @@ class SenderPipeline:
     def set_bitrate(self, bitrate_bps: int) -> None:
         """Update the encoder bitrate.
 
-        Takes effect on the next :meth:`start_stream`. ``v4l2h264enc``
-        bitrate is set via ``extra-controls`` and is not reliably
-        re-settable on a live encoder across all v4l2 driver versions;
-        rebuilding on the next stream start is the safe path.
+        Takes effect on the next :meth:`start_stream`. Hardware encoder
+        bitrate controls are not reliably re-settable on a live encoder
+        across all v4l2 driver versions; rebuilding on the next stream
+        start is the safe path.
         """
 
         if bitrate_bps <= 0:

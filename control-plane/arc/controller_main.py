@@ -62,10 +62,13 @@ class SourceSwitcher:
         *,
         slot_count: int = SOURCE_SLOT_COUNT,
         initial_sources: tuple[int, ...] | None = None,
+        keep_remote_streams: bool = False,
     ) -> None:
         self.controller = controller
         self.pipeline = pipeline
         self.sender_addrs = set(sender_addrs)
+        self.keep_remote_streams = keep_remote_streams
+        self._streaming_remotes: set[int] = set()
         defaults = [EMPTY_SOURCE] * slot_count
         if slot_count:
             defaults[0] = LOCAL_SOURCE
@@ -88,9 +91,6 @@ class SourceSwitcher:
 
         if not self._is_known_source(source_addr):
             log.warning("SET_SOURCE unknown source 0x%02x", source_addr)
-            return
-
-        if self.sources[slot_id] == source_addr:
             return
 
         self.sources[slot_id] = source_addr
@@ -122,6 +122,8 @@ class SourceSwitcher:
         self._reconcile_slots((slot_id,), now=now)
 
     def _reconcile_slots(self, slot_ids, now: float) -> None:
+        if self.keep_remote_streams:
+            self._sync_warm_remote_streams(now=now)
         pipeline_updates: dict[int, int] = {}
         for slot_id in slot_ids:
             next_active = self._next_active_for_slot(slot_id)
@@ -129,10 +131,10 @@ class SourceSwitcher:
             if active == next_active:
                 continue
 
-            if self._is_remote_sender(active):
-                self.controller.stop_sender(active, now=now)
+            if self._is_remote_sender(active) and not self.keep_remote_streams:
+                self._stop_sender_if_unused(active, changing_slot=slot_id, now=now)
             if self._is_remote_sender(next_active):
-                self.controller.start_sender(next_active, now=now)
+                self._ensure_sender_streaming(next_active, now=now)
 
             self.active_sources[slot_id] = next_active
             pipeline_updates[slot_id] = next_active
@@ -154,6 +156,32 @@ class SourceSwitcher:
         if self._is_remote_sender(desired) and not self.controller.health.is_online(desired):
             next_active = EMPTY_SOURCE
         return next_active
+
+    def _sync_warm_remote_streams(self, now: float) -> None:
+        for addr in sorted(self.sender_addrs):
+            if self.controller.health.is_online(addr):
+                self._ensure_sender_streaming(addr, now=now)
+            else:
+                self._streaming_remotes.discard(addr)
+
+    def _ensure_sender_streaming(self, addr: int, now: float) -> None:
+        if addr in self._streaming_remotes:
+            return
+        self.controller.start_sender(addr, now=now)
+        self._streaming_remotes.add(addr)
+
+    def _stop_sender_if_unused(
+        self,
+        addr: int,
+        *,
+        changing_slot: int,
+        now: float,
+    ) -> None:
+        for idx, active in enumerate(self.active_sources):
+            if idx != changing_slot and active == addr:
+                return
+        self.controller.stop_sender(addr, now=now)
+        self._streaming_remotes.discard(addr)
 
     def _is_known_source(self, source_addr: int) -> bool:
         return (
@@ -466,6 +494,7 @@ async def run(cfg: ControllerConfig, *, pipeline=None) -> None:
         pipeline,
         tuple(s.addr for s in cfg.senders),
         initial_sources=cfg.initial_sources,
+        keep_remote_streams=cfg.video.switch_mode == "selector",
     )
     try:
         source_switcher.reconcile()

@@ -408,6 +408,36 @@ class ControllerMainAdapterTests(unittest.TestCase):
         self.assertEqual(len(link.sent), 1)
         self.assertEqual(link.sent[0].type, messages.VideoType.START_STREAM)
 
+    def test_set_source_reconciles_when_desired_already_matches(self):
+        pipe = FakeControllerPipeline()
+        link = FakeLink()
+        controller = Controller(
+            links={"sender-c": link},
+            sender_addrs=(protocol.ADDR_SENDER_C,),
+        )
+        switcher = SourceSwitcher(
+            controller,
+            pipe,
+            (protocol.ADDR_SENDER_C,),
+            initial_sources=(protocol.ADDR_CONTROLLER, protocol.ADDR_SENDER_C),
+        )
+        controller.health.observe(
+            _frame(
+                src=protocol.ADDR_SENDER_C,
+                dst=protocol.ADDR_CONTROLLER,
+                family=protocol.FAMILY_NETMGMT,
+                type=protocol.NETMGMT_HEARTBEAT,
+            ),
+            now=1.0,
+        )
+
+        switcher.set_source(1, protocol.ADDR_SENDER_C, now=1.0)
+
+        self.assertEqual(switcher.sources[1], protocol.ADDR_SENDER_C)
+        self.assertEqual(switcher.active_sources[1], protocol.ADDR_SENDER_C)
+        self.assertEqual(pipe.sources_set, [(1, protocol.ADDR_SENDER_C)])
+        self.assertEqual([f.type for f in link.sent], [messages.VideoType.START_STREAM])
+
     def test_set_source_switches_between_remote_senders(self):
         pipe = FakeControllerPipeline()
         c_link = FakeLink()
@@ -469,6 +499,51 @@ class ControllerMainAdapterTests(unittest.TestCase):
                 (1, protocol.ADDR_SENDER_L1),
             ],
         )
+
+    def test_keep_remote_streams_starts_online_senders_once_and_does_not_stop_on_rotate(self):
+        pipe = FakeControllerPipeline()
+        c_link = FakeLink()
+        l1_link = FakeLink()
+        controller = Controller(
+            links={"sender-c": c_link, "sender-l1": l1_link},
+            sender_addrs=(protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+        )
+        switcher = SourceSwitcher(
+            controller,
+            pipe,
+            (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+            keep_remote_streams=True,
+        )
+        for addr in (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1):
+            controller.health.observe(
+                _frame(
+                    src=addr,
+                    dst=protocol.ADDR_CONTROLLER,
+                    family=protocol.FAMILY_NETMGMT,
+                    type=protocol.NETMGMT_HEARTBEAT,
+                ),
+                now=1.0,
+            )
+
+        switcher.set_sources(
+            {0: protocol.ADDR_CONTROLLER, 1: protocol.ADDR_SENDER_C},
+            now=1.0,
+        )
+        switcher.set_sources(
+            {0: protocol.ADDR_SENDER_C, 1: protocol.ADDR_SENDER_L1},
+            now=2.0,
+        )
+        switcher.set_sources(
+            {0: protocol.ADDR_SENDER_L1, 1: protocol.ADDR_CONTROLLER},
+            now=3.0,
+        )
+
+        self.assertEqual([f.type for f in c_link.sent], [messages.VideoType.START_STREAM])
+        self.assertEqual([f.type for f in l1_link.sent], [messages.VideoType.START_STREAM])
+        self.assertEqual(pipe.sources_set[-2:], [
+            (0, protocol.ADDR_SENDER_L1),
+            (1, protocol.ADDR_CONTROLLER),
+        ])
 
     def test_set_source_rejects_unknown_source_and_bad_slot(self):
         pipe = FakeControllerPipeline()

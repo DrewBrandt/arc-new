@@ -225,6 +225,7 @@ class ControllerPipeline:
                 if selector is None:
                     raise PipelineError(f"pipeline missing selector for slot {slot_id}")
                 self._selectors.append(selector)
+            self._configure_selector_pads()
 
         self._textoverlay.set_property("text", self._overlay_text)
         initial = self._desired_layout()
@@ -405,6 +406,18 @@ class ControllerPipeline:
             if pad is None:
                 raise PipelineError(f"selector slot {slot_id} missing pad {pad_name}")
             selector.set_property("active-pad", pad)
+
+    def _configure_selector_pads(self) -> None:
+        for selector in self._selectors:
+            for pad_name in self._selector_pad_by_source.values():
+                pad = selector.get_static_pad(pad_name)
+                if pad is None:
+                    continue
+                try:
+                    pad.set_property("always-ok", True)
+                except TypeError:
+                    # Older/fake pads may not expose the input-selector pad property.
+                    pass
 
     def _initial_layout(self) -> Layout | None:
         if self.startup_layout is not None:

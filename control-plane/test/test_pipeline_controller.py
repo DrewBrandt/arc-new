@@ -436,6 +436,8 @@ class ControllerPipelineTests(unittest.TestCase):
         slot1 = FakeGst.pipelines[0].selectors["slot1_selector"]
         self.assertIs(slot0.props["active-pad"], slot0.pads["sink_2"])
         self.assertIs(slot1.props["active-pad"], slot1.pads["sink_1"])
+        self.assertTrue(slot0.pads["sink_0"].props["always-ok"])
+        self.assertTrue(slot1.pads["sink_2"].props["always-ok"])
 
 
 if __name__ == "__main__":

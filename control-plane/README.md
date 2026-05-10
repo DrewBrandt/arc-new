@@ -190,8 +190,9 @@ existing `/etc/arc/controller.toml`.
   uses the Controller's selector switch mode, which keeps the KMS/compositor
   pipeline running and flips active input-selector pads instead of rebuilding
   the graph. This is smoother, but it means configured remote UDP/decode
-  branches exist in the running graph; avoid configuring extra unused senders
-  on underpowered controller hardware.
+  branches exist in the running graph and online senders are kept streaming so
+  they are warm when selected; avoid configuring extra unused senders on
+  underpowered controller hardware.
 
 ## Dependencies
 

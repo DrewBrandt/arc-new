@@ -50,6 +50,7 @@ class ControllerVideoConfig:
     sink: str = "kmssink sync=false"
     startup_layout: str | None = None
     switch_mode: str = "selector"
+    warm_remote_streams: bool = False
 
 
 @dataclass(frozen=True)
@@ -143,6 +144,7 @@ def load_controller_config(path: str | Path) -> ControllerConfig:
         switch_mode=_as_str(
             video_section.get("switch_mode", "selector"), path, "[video].switch_mode"
         ),
+        warm_remote_streams=bool(video_section.get("warm_remote_streams", False)),
     )
 
     return ControllerConfig(

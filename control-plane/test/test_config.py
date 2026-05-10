@@ -45,6 +45,7 @@ class ControllerConfigTests(unittest.TestCase):
             sink = "kmssink connector-id=51 sync=false"
             startup_layout = "split"
             switch_mode = "selector"
+            warm_remote_streams = true
 
             [[senders]]
             id = 0x12
@@ -83,6 +84,7 @@ class ControllerConfigTests(unittest.TestCase):
         self.assertEqual(cfg.video.sink, "kmssink connector-id=51 sync=false")
         self.assertEqual(cfg.video.startup_layout, "split")
         self.assertEqual(cfg.video.switch_mode, "selector")
+        self.assertTrue(cfg.video.warm_remote_streams)
 
     def test_controller_video_defaults_to_selector_switching(self):
         path = write_toml(
@@ -102,6 +104,7 @@ class ControllerConfigTests(unittest.TestCase):
         self.assertEqual(cfg.video.sink, "kmssink sync=false")
         self.assertIsNone(cfg.video.startup_layout)
         self.assertEqual(cfg.video.switch_mode, "selector")
+        self.assertFalse(cfg.video.warm_remote_streams)
 
     def test_rejects_wrong_node_address(self):
         path = write_toml(

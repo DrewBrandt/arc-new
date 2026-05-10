@@ -494,7 +494,7 @@ async def run(cfg: ControllerConfig, *, pipeline=None) -> None:
         pipeline,
         tuple(s.addr for s in cfg.senders),
         initial_sources=cfg.initial_sources,
-        keep_remote_streams=cfg.video.switch_mode == "selector",
+        keep_remote_streams=cfg.video.warm_remote_streams,
     )
     try:
         source_switcher.reconcile()

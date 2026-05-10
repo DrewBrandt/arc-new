@@ -100,6 +100,7 @@ mixer = "glvideomixer"
 sink = "kmssink driver-name=drm-rp1-vec sync=false"
 startup_layout = "split"
 switch_mode = "selector"
+warm_remote_streams = false
 
 [layouts.local_full]
 slot_0 = { xpos = 40, ypos = 0, width = 640, height = 480, alpha = 1.0 }
@@ -189,10 +190,10 @@ existing `/etc/arc/controller.toml`.
   to rotate three pictures through main, offscreen/rest, and PIP. Rotation
   uses the Controller's selector switch mode, which keeps the KMS/compositor
   pipeline running and flips active input-selector pads instead of rebuilding
-  the graph. This is smoother, but it means configured remote UDP/decode
-  branches exist in the running graph and online senders are kept streaming so
-  they are warm when selected; avoid configuring extra unused senders on
-  underpowered controller hardware.
+  the graph. The default `warm_remote_streams = false` favors lower output
+  latency over perfectly instant remote switching. Set it to `true` only when
+  you want all online remote senders kept streaming/warm, accepting extra
+  decode and WiFi load.
 
 ## Dependencies
 

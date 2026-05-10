@@ -489,6 +489,7 @@ class ControllerMainAdapterTests(unittest.TestCase):
             messages.VideoType.STOP_STREAM,
         ])
         self.assertEqual([f.type for f in l1_link.sent], [
+            messages.VideoType.STOP_STREAM,
             messages.VideoType.START_STREAM,
         ])
         self.assertEqual(switcher.sources[1], protocol.ADDR_SENDER_L1)
@@ -544,6 +545,46 @@ class ControllerMainAdapterTests(unittest.TestCase):
             (0, protocol.ADDR_SENDER_L1),
             (1, protocol.ADDR_CONTROLLER),
         ])
+
+    def test_cold_selector_policy_stops_online_senders_that_are_not_visible(self):
+        pipe = FakeControllerPipeline()
+        c_link = FakeLink()
+        l1_link = FakeLink()
+        controller = Controller(
+            links={"sender-c": c_link, "sender-l1": l1_link},
+            sender_addrs=(protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+        )
+        switcher = SourceSwitcher(
+            controller,
+            pipe,
+            (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+            keep_remote_streams=False,
+        )
+        for addr in (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1):
+            controller.health.observe(
+                _frame(
+                    src=addr,
+                    dst=protocol.ADDR_CONTROLLER,
+                    family=protocol.FAMILY_NETMGMT,
+                    type=protocol.NETMGMT_HEARTBEAT,
+                ),
+                now=1.0,
+            )
+
+        switcher.set_sources(
+            {0: protocol.ADDR_CONTROLLER, 1: protocol.ADDR_SENDER_C},
+            now=1.0,
+        )
+
+        self.assertEqual([f.type for f in c_link.sent], [messages.VideoType.START_STREAM])
+        self.assertEqual([f.type for f in l1_link.sent], [messages.VideoType.STOP_STREAM])
+
+        switcher.set_sources(
+            {0: protocol.ADDR_CONTROLLER, 1: protocol.ADDR_SENDER_C},
+            now=2.0,
+        )
+
+        self.assertEqual([f.type for f in l1_link.sent], [messages.VideoType.STOP_STREAM])
 
     def test_set_source_rejects_unknown_source_and_bad_slot(self):
         pipe = FakeControllerPipeline()

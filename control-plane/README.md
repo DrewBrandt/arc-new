@@ -193,7 +193,9 @@ existing `/etc/arc/controller.toml`.
   the graph. The default `warm_remote_streams = false` favors lower output
   latency over perfectly instant remote switching. Set it to `true` only when
   you want all online remote senders kept streaming/warm, accepting extra
-  decode and WiFi load.
+  decode and WiFi load. In the default cold mode, the Controller sends
+  `STOP_STREAM` to online senders that are not visible so boot-started sender
+  streams do not consume controller decode time in the background.
 
 ## Dependencies
 

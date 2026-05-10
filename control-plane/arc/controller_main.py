@@ -69,6 +69,7 @@ class SourceSwitcher:
         self.sender_addrs = set(sender_addrs)
         self.keep_remote_streams = keep_remote_streams
         self._streaming_remotes: set[int] = set()
+        self._stopped_remotes: set[int] = set()
         defaults = [EMPTY_SOURCE] * slot_count
         if slot_count:
             defaults[0] = LOCAL_SOURCE
@@ -139,6 +140,9 @@ class SourceSwitcher:
             self.active_sources[slot_id] = next_active
             pipeline_updates[slot_id] = next_active
 
+        if not self.keep_remote_streams:
+            self._sync_cold_remote_streams(now=now)
+
         if not pipeline_updates:
             return
         set_pipeline_sources = getattr(self.pipeline, "set_sources", None)
@@ -163,12 +167,30 @@ class SourceSwitcher:
                 self._ensure_sender_streaming(addr, now=now)
             else:
                 self._streaming_remotes.discard(addr)
+                self._stopped_remotes.discard(addr)
+
+    def _sync_cold_remote_streams(self, now: float) -> None:
+        visible = {
+            source for source in self.active_sources if self._is_remote_sender(source)
+        }
+        for addr in sorted(self.sender_addrs):
+            if not self.controller.health.is_online(addr):
+                self._streaming_remotes.discard(addr)
+                self._stopped_remotes.discard(addr)
+                continue
+            if addr in visible:
+                self._ensure_sender_streaming(addr, now=now)
+            elif addr not in self._stopped_remotes:
+                self.controller.stop_sender(addr, now=now)
+                self._streaming_remotes.discard(addr)
+                self._stopped_remotes.add(addr)
 
     def _ensure_sender_streaming(self, addr: int, now: float) -> None:
         if addr in self._streaming_remotes:
             return
         self.controller.start_sender(addr, now=now)
         self._streaming_remotes.add(addr)
+        self._stopped_remotes.discard(addr)
 
     def _stop_sender_if_unused(
         self,
@@ -182,6 +204,7 @@ class SourceSwitcher:
                 return
         self.controller.stop_sender(addr, now=now)
         self._streaming_remotes.discard(addr)
+        self._stopped_remotes.add(addr)
 
     def _is_known_source(self, source_addr: int) -> bool:
         return (

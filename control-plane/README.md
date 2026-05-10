@@ -185,7 +185,10 @@ existing `/etc/arc/controller.toml`.
   `python -m arc.controller_cli source 1 sender-c` or
   `python -m arc.controller_cli cycle 1 5 sender-c sender-l1`.
   Use `python -m arc.controller_cli rotate 5 local sender-c sender-l1`
-  to rotate three pictures through main, offscreen/rest, and PIP.
+  to rotate three pictures through main, offscreen/rest, and PIP. Rotation
+  batches the main/PIP source changes into one pipeline rebuild per step, but
+  source switching can still briefly blank because the current implementation
+  rebuilds the GStreamer graph.
 
 ## Dependencies
 

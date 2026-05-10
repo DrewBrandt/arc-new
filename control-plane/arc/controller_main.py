@@ -96,30 +96,64 @@ class SourceSwitcher:
         self.sources[slot_id] = source_addr
         self._reconcile_slot(slot_id, now=now)
 
+    def set_sources(self, requested: dict[int, int], now: float = 0.0) -> None:
+        for slot_id, source_addr in requested.items():
+            if not 0 <= slot_id < len(self.sources):
+                log.warning(
+                    "SET_SOURCE slot=%d out of range (0..%d)",
+                    slot_id,
+                    len(self.sources) - 1,
+                )
+                return
+            if not self._is_known_source(source_addr):
+                log.warning("SET_SOURCE unknown source 0x%02x", source_addr)
+                return
+
+        for slot_id, source_addr in requested.items():
+            self.sources[slot_id] = source_addr
+        self._reconcile_slots(requested.keys(), now=now)
+
     def reconcile(self, now: float = 0.0) -> None:
         """Apply desired sources that are available on the control plane."""
 
-        for slot_id in range(len(self.sources)):
-            self._reconcile_slot(slot_id, now=now)
+        self._reconcile_slots(range(len(self.sources)), now=now)
 
     def _reconcile_slot(self, slot_id: int, now: float) -> None:
+        self._reconcile_slots((slot_id,), now=now)
+
+    def _reconcile_slots(self, slot_ids, now: float) -> None:
+        pipeline_updates: dict[int, int] = {}
+        for slot_id in slot_ids:
+            next_active = self._next_active_for_slot(slot_id)
+            active = self.active_sources[slot_id]
+            if active == next_active:
+                continue
+
+            if self._is_remote_sender(active):
+                self.controller.stop_sender(active, now=now)
+            if self._is_remote_sender(next_active):
+                self.controller.start_sender(next_active, now=now)
+
+            self.active_sources[slot_id] = next_active
+            pipeline_updates[slot_id] = next_active
+
+        if not pipeline_updates:
+            return
+        set_pipeline_sources = getattr(self.pipeline, "set_sources", None)
+        if set_pipeline_sources is not None:
+            set_pipeline_sources(pipeline_updates)
+            return
+        set_pipeline_source = getattr(self.pipeline, "set_source", None)
+        if set_pipeline_source is not None:
+            for slot_id, next_active in pipeline_updates.items():
+                set_pipeline_source(slot_id, next_active)
+
+    def _next_active_for_slot(self, slot_id: int) -> int:
         desired = self.sources[slot_id]
-        active = self.active_sources[slot_id]
         next_active = desired
         if self._is_remote_sender(desired) and not self.controller.health.is_online(desired):
             next_active = EMPTY_SOURCE
-        if active == next_active:
-            return
-
-        if self._is_remote_sender(active):
-            self.controller.stop_sender(active, now=now)
-        if self._is_remote_sender(next_active):
-            self.controller.start_sender(next_active, now=now)
-
-        self.active_sources[slot_id] = next_active
-        set_pipeline_source = getattr(self.pipeline, "set_source", None)
-        if set_pipeline_source is not None:
-            set_pipeline_source(slot_id, next_active)
+        return next_active
 
     def _is_known_source(self, source_addr: int) -> bool:
         return (
@@ -355,8 +389,7 @@ class BenchCommandServer:
     def _rotate_once(self, idx: int, sources: list[int], now: float) -> None:
         main = sources[idx % len(sources)]
         pip = sources[(idx + 1) % len(sources)]
-        self.source_switcher.set_source(0, main, now=now)
-        self.source_switcher.set_source(1, pip, now=now)
+        self.source_switcher.set_sources({0: main, 1: pip}, now=now)
 
     def _stop_cycle(self) -> None:
         if self._cycle_task is None:

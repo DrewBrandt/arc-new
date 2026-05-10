@@ -280,6 +280,19 @@ class ControllerPipelineTests(unittest.TestCase):
         with self.assertRaises(PipelineError):
             pipe.set_source(3, protocol.ADDR_SENDER_C)
 
+    def test_set_sources_records_multiple_sources(self):
+        pipe = ControllerPipeline(_config())
+        pipe.set_sources({
+            0: protocol.ADDR_SENDER_C,
+            1: protocol.ADDR_CONTROLLER,
+        })
+
+        self.assertEqual(pipe.slot_sources[0].addr, protocol.ADDR_SENDER_C)
+        self.assertEqual(pipe.slot_sources[1].addr, protocol.ADDR_CONTROLLER)
+        desc = pipe.build_pipeline_description()
+        self.assertIn("udpsrc port=5012", desc)
+        self.assertIn("libcamerasrc", desc)
+
     def test_default_mixer_is_compositor(self):
         pipe = ControllerPipeline(_config())
         self.assertEqual(pipe.mixer, "compositor")
@@ -339,6 +352,29 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertEqual(FakeGst.pipelines[1].comp.pads["sink_1"].props["alpha"], 1.0)
         self.assertEqual(FakeGst.pipelines[1].comp.pads["sink_2"].props["alpha"], 1.0)
         self.assertEqual(pipe.current_layout, "split")
+
+    def test_set_sources_rebuilds_live_pipeline_once(self):
+        import arc.pipeline_controller as pc
+
+        original = pc._import_gstreamer
+        FakeGst.launched = []
+        FakeGst.pipelines = []
+        pc._import_gstreamer = lambda: FakeGst
+        try:
+            pipe = ControllerPipeline(_config())
+            pipe.start()
+            pipe.set_sources({
+                0: protocol.ADDR_SENDER_C,
+                1: protocol.ADDR_CONTROLLER,
+            })
+        finally:
+            pc._import_gstreamer = original
+
+        self.assertEqual(len(FakeGst.launched), 2)
+        self.assertEqual(FakeGst.pipelines[0].states, ["PLAYING", "NULL"])
+        self.assertEqual(FakeGst.pipelines[1].states, ["PLAYING"])
+        self.assertEqual(pipe.slot_sources[0].addr, protocol.ADDR_SENDER_C)
+        self.assertEqual(pipe.slot_sources[1].addr, protocol.ADDR_CONTROLLER)
 
 
 if __name__ == "__main__":

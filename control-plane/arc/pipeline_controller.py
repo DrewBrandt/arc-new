@@ -247,13 +247,27 @@ class ControllerPipeline:
         when live, preserving the current layout and overlay text.
         """
 
-        source = self._resolve_source(slot_id, source_addr)
-        if self._slot_sources[slot_id] == source:
+        self.set_sources({slot_id: source_addr})
+
+    def set_sources(self, sources: dict[int, int]) -> None:
+        """Set one or more compositor slot sources with at most one rebuild."""
+
+        resolved = {
+            slot_id: self._resolve_source(slot_id, source_addr)
+            for slot_id, source_addr in sources.items()
+        }
+        changed = {
+            slot_id: source
+            for slot_id, source in resolved.items()
+            if self._slot_sources[slot_id] != source
+        }
+        if not changed:
             return
         was_running = self._pipeline is not None
         if was_running:
             self.stop()
-        self._slot_sources[slot_id] = source
+        for slot_id, source in changed.items():
+            self._slot_sources[slot_id] = source
         if was_running:
             self.start()
 

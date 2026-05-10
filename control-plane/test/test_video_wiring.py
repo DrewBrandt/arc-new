@@ -257,6 +257,9 @@ class FakeControllerPipeline:
     def set_source(self, slot_id: int, source_addr: int) -> None:
         self.sources_set.append((slot_id, source_addr))
 
+    def set_sources(self, sources: dict[int, int]) -> None:
+        self.sources_set.extend(sources.items())
+
 
 @dataclass
 class FakeLink:

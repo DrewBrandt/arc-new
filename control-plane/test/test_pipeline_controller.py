@@ -256,6 +256,7 @@ class ControllerPipelineTests(unittest.TestCase):
             _config(),
             slot_0_source="udpsrc port=5000 ! fakesink",
             slot_1_source="videotestsrc pattern=smpte",
+            switch_mode="rebuild",
         )
         desc = pipe.build_pipeline_description()
         self.assertIn("udpsrc port=5000", desc)
@@ -292,6 +293,12 @@ class ControllerPipelineTests(unittest.TestCase):
             pipe.set_source(1, protocol.ADDR_SENDER_L1)
         with self.assertRaises(PipelineError):
             pipe.set_source(3, protocol.ADDR_SENDER_C)
+
+    def test_rebuild_mode_rejects_local_camera_in_both_slots(self):
+        pipe = ControllerPipeline(_config(), switch_mode="rebuild")
+
+        with self.assertRaises(PipelineError):
+            pipe.set_source(1, protocol.ADDR_CONTROLLER)
 
     def test_set_sources_records_multiple_sources(self):
         pipe = ControllerPipeline(_config())
@@ -360,7 +367,8 @@ class ControllerPipelineTests(unittest.TestCase):
         pc._import_gstreamer = lambda: FakeGst
         try:
             pipe = ControllerPipeline(
-                _config({"split": {"slot_0": {"alpha": 1.0}, "slot_1": {"alpha": 1.0}}})
+                _config({"split": {"slot_0": {"alpha": 1.0}, "slot_1": {"alpha": 1.0}}}),
+                switch_mode="rebuild",
             )
             pipe.set_overlay("KD3BBP / BOOST")
             pipe.set_layout("split")
@@ -390,7 +398,7 @@ class ControllerPipelineTests(unittest.TestCase):
         FakeGst.pipelines = []
         pc._import_gstreamer = lambda: FakeGst
         try:
-            pipe = ControllerPipeline(_config())
+            pipe = ControllerPipeline(_config(), switch_mode="rebuild")
             pipe.start()
             pipe.set_sources({
                 0: protocol.ADDR_SENDER_C,

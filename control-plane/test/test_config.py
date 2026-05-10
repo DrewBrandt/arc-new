@@ -84,7 +84,7 @@ class ControllerConfigTests(unittest.TestCase):
         self.assertEqual(cfg.video.startup_layout, "split")
         self.assertEqual(cfg.video.switch_mode, "selector")
 
-    def test_controller_video_defaults_to_software_compositor(self):
+    def test_controller_video_defaults_to_selector_switching(self):
         path = write_toml(
             """
             [node]
@@ -101,7 +101,7 @@ class ControllerConfigTests(unittest.TestCase):
         self.assertEqual(cfg.video.mixer, "compositor")
         self.assertEqual(cfg.video.sink, "kmssink sync=false")
         self.assertIsNone(cfg.video.startup_layout)
-        self.assertEqual(cfg.video.switch_mode, "rebuild")
+        self.assertEqual(cfg.video.switch_mode, "selector")
 
     def test_rejects_wrong_node_address(self):
         path = write_toml(

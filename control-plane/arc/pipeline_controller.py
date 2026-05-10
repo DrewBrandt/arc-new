@@ -285,6 +285,16 @@ class ControllerPipeline:
         }
         if not changed:
             return
+        if self.switch_mode == "rebuild":
+            prospective = list(self._slot_sources)
+            for slot_id, source in changed.items():
+                prospective[slot_id] = source
+            local_count = sum(1 for source in prospective if source.addr == _LOCAL_SOURCE)
+            if local_count > 1:
+                raise PipelineError(
+                    "rebuild switch mode cannot use the local camera in multiple slots; "
+                    "use switch_mode='selector'"
+                )
         was_running = self._pipeline is not None
         if was_running and self.switch_mode == "selector":
             for slot_id, source in changed.items():

@@ -49,7 +49,7 @@ class ControllerVideoConfig:
     mixer: str = "compositor"
     sink: str = "kmssink sync=false"
     startup_layout: str | None = None
-    switch_mode: str = "rebuild"
+    switch_mode: str = "selector"
 
 
 @dataclass(frozen=True)
@@ -141,7 +141,7 @@ def load_controller_config(path: str | Path) -> ControllerConfig:
             video_section.get("startup_layout"), path, "[video].startup_layout"
         ),
         switch_mode=_as_str(
-            video_section.get("switch_mode", "rebuild"), path, "[video].switch_mode"
+            video_section.get("switch_mode", "selector"), path, "[video].switch_mode"
         ),
     )
 

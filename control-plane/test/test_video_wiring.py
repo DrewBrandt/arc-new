@@ -14,6 +14,7 @@ No GStreamer is loaded; the pipelines are replaced with simple recorders.
 
 from __future__ import annotations
 
+import asyncio
 import unittest
 from dataclasses import dataclass
 from typing import Any
@@ -559,6 +560,68 @@ class ControllerMainAdapterTests(unittest.TestCase):
         self.assertEqual(bench.execute("layout 0"), "OK layout local_full")
 
         self.assertEqual(pipe.layouts_set, ["split", "local_full"])
+
+    def test_bench_command_server_rotate_steps_main_and_pip(self):
+        async def exercise():
+            pipe = FakeControllerPipeline()
+            c_link = FakeLink()
+            l1_link = FakeLink()
+            controller = Controller(
+                links={"sender-c": c_link, "sender-l1": l1_link},
+                sender_addrs=(protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+            )
+            switcher = SourceSwitcher(
+                controller,
+                pipe,
+                (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+            )
+            for addr in (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1):
+                controller.health.observe(
+                    _frame(
+                        src=addr,
+                        dst=protocol.ADDR_CONTROLLER,
+                        family=protocol.FAMILY_NETMGMT,
+                        type=protocol.NETMGMT_HEARTBEAT,
+                    ),
+                    now=1.0,
+                )
+            bench = BenchCommandServer(
+                pipe,
+                switcher,
+                ["local_full", "split"],
+                {
+                    "sender-c": protocol.ADDR_SENDER_C,
+                    "sender-l1": protocol.ADDR_SENDER_L1,
+                },
+            )
+            sources = [
+                protocol.ADDR_CONTROLLER,
+                protocol.ADDR_SENDER_C,
+                protocol.ADDR_SENDER_L1,
+            ]
+
+            response = bench.execute("rotate 10 local sender-c sender-l1", now=1.0)
+            bench._stop_cycle()
+            pipe.sources_set.clear()
+            bench._rotate_once(0, sources, now=1.0)
+            bench._rotate_once(1, sources, now=2.0)
+            bench._rotate_once(2, sources, now=3.0)
+            await bench.stop()
+            return response, pipe.sources_set
+
+        response, sources_set = asyncio.run(exercise())
+
+        self.assertEqual(
+            response,
+            "OK rotating main/PIP every 10s: local sender-c(0x12) sender-l1(0x13)",
+        )
+        self.assertEqual(sources_set, [
+            (1, protocol.ADDR_SENDER_C),
+            (0, protocol.ADDR_SENDER_C),
+            (1, protocol.ADDR_SENDER_L1),
+            (0, protocol.ADDR_SENDER_L1),
+            (1, protocol.ADDR_CONTROLLER),
+        ])
 
     def test_pipeline_error_is_swallowed(self):
         class BoomPipeline:

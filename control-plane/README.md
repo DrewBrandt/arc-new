@@ -53,6 +53,7 @@ python -m arc.controller_cli status
 python -m arc.controller_cli source 1 sender-c
 python -m arc.controller_cli source 1 sender-l1
 python -m arc.controller_cli cycle 1 5 sender-c sender-l1
+python -m arc.controller_cli rotate 5 local sender-c sender-l1
 python -m arc.controller_cli stop-cycle
 python -m arc.controller_cli layout split
 ```
@@ -183,6 +184,8 @@ existing `/etc/arc/controller.toml`.
 - Bench source switching is available on the Controller with
   `python -m arc.controller_cli source 1 sender-c` or
   `python -m arc.controller_cli cycle 1 5 sender-c sender-l1`.
+  Use `python -m arc.controller_cli rotate 5 local sender-c sender-l1`
+  to rotate three pictures through main, offscreen/rest, and PIP.
 
 ## Dependencies
 

@@ -34,6 +34,8 @@ def _build_command(args: argparse.Namespace) -> str:
         return f"source {args.slot} {args.source}"
     if args.command == "cycle":
         return f"cycle {args.slot} {args.interval} {' '.join(args.sources)}"
+    if args.command == "rotate":
+        return f"rotate {args.interval} {' '.join(args.sources)}"
     if args.command == "stop-cycle":
         return "stop-cycle"
     raise SystemExit(f"unknown command {args.command}")
@@ -58,6 +60,10 @@ def main() -> None:
     cycle.add_argument("slot", type=int)
     cycle.add_argument("interval", type=float, help="Seconds between switches")
     cycle.add_argument("sources", nargs="+")
+
+    rotate = sub.add_parser("rotate", help="Rotate main/PIP/rest across sources")
+    rotate.add_argument("interval", type=float, help="Seconds between switches")
+    rotate.add_argument("sources", nargs="+")
 
     sub.add_parser("stop-cycle", help="Stop the running source loop")
 

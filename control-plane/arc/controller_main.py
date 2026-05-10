@@ -234,6 +234,8 @@ class BenchCommandServer:
                 return self._source(args, now=now)
             if command == "cycle":
                 return self._cycle(args)
+            if command == "rotate":
+                return self._rotate(args)
             if command in ("stop-cycle", "stop_cycle"):
                 self._stop_cycle()
                 return "OK cycle stopped"
@@ -261,7 +263,8 @@ class BenchCommandServer:
     def _help(self) -> str:
         return (
             "commands: status | layout NAME_OR_INDEX | source SLOT SOURCE | "
-            "cycle SLOT INTERVAL_SECONDS SOURCE... | stop-cycle\n"
+            "cycle SLOT INTERVAL_SECONDS SOURCE... | "
+            "rotate INTERVAL_SECONDS SOURCE... | stop-cycle\n"
             "sources: empty/off, local/controller, 0x12, sender-c, sender-l1, ..."
         )
 
@@ -316,6 +319,21 @@ class BenchCommandServer:
         names = " ".join(self._format_source(source) for source in sources)
         return f"OK cycling slot{slot} every {interval:g}s: {names}"
 
+    def _rotate(self, args: list[str]) -> str:
+        if len(args) < 3:
+            raise ValueError("usage: rotate INTERVAL_SECONDS SOURCE...")
+        try:
+            interval = float(args[0])
+        except ValueError as exc:
+            raise ValueError("interval must be a number of seconds") from exc
+        if interval <= 0:
+            raise ValueError("interval must be greater than 0")
+        sources = [self._parse_source(arg) for arg in args[1:]]
+        self._stop_cycle()
+        self._cycle_task = asyncio.create_task(self._rotate_loop(interval, sources))
+        names = " ".join(self._format_source(source) for source in sources)
+        return f"OK rotating main/PIP every {interval:g}s: {names}"
+
     async def _cycle_loop(
         self,
         slot: int,
@@ -326,6 +344,19 @@ class BenchCommandServer:
             for source in sources:
                 self.source_switcher.set_source(slot, source, now=_now())
                 await asyncio.sleep(interval)
+
+    async def _rotate_loop(self, interval: float, sources: list[int]) -> None:
+        idx = 0
+        while True:
+            self._rotate_once(idx, sources, now=_now())
+            idx += 1
+            await asyncio.sleep(interval)
+
+    def _rotate_once(self, idx: int, sources: list[int], now: float) -> None:
+        main = sources[idx % len(sources)]
+        pip = sources[(idx + 1) % len(sources)]
+        self.source_switcher.set_source(0, main, now=now)
+        self.source_switcher.set_source(1, pip, now=now)
 
     def _stop_cycle(self) -> None:
         if self._cycle_task is None:

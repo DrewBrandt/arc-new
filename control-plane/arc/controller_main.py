@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import signal
 from pathlib import Path
@@ -41,6 +42,8 @@ log = logging.getLogger("arc.controller")
 EMPTY_SOURCE = protocol.ADDR_UNASSIGNED
 LOCAL_SOURCE = protocol.ADDR_CONTROLLER
 SOURCE_SLOT_COUNT = 2
+BENCH_CONTROL_HOST = "127.0.0.1"
+BENCH_CONTROL_PORT = 6010
 
 
 class SourceSwitcher:
@@ -180,6 +183,204 @@ def make_fc_video_handler(
     return on_fc_video
 
 
+class BenchCommandServer:
+    """Localhost-only bench controls for testing video without an FC wired in."""
+
+    def __init__(
+        self,
+        pipeline: ControllerPipeline,
+        source_switcher: SourceSwitcher,
+        layout_names: list[str],
+        sender_names: dict[str, int],
+        *,
+        host: str = BENCH_CONTROL_HOST,
+        port: int = BENCH_CONTROL_PORT,
+    ) -> None:
+        self.pipeline = pipeline
+        self.source_switcher = source_switcher
+        self.layout_names = layout_names
+        self.sender_names = {k.lower(): v for k, v in sender_names.items()}
+        self.host = host
+        self.port = port
+        self._server: asyncio.base_events.Server | None = None
+        self._cycle_task: asyncio.Task | None = None
+
+    async def start(self) -> None:
+        self._server = await asyncio.start_server(self._handle, self.host, self.port)
+
+    async def stop(self) -> None:
+        self._stop_cycle()
+        if self._server is None:
+            return
+        self._server.close()
+        with contextlib.suppress(OSError):
+            await self._server.wait_closed()
+        self._server = None
+
+    def execute(self, line: str, now: float = 0.0) -> str:
+        parts = line.strip().split()
+        if not parts:
+            return self._help()
+        command = parts[0].lower()
+        args = parts[1:]
+        try:
+            if command in ("help", "?"):
+                return self._help()
+            if command == "status":
+                return self._status()
+            if command == "layout":
+                return self._layout(args)
+            if command == "source":
+                return self._source(args, now=now)
+            if command == "cycle":
+                return self._cycle(args)
+            if command in ("stop-cycle", "stop_cycle"):
+                self._stop_cycle()
+                return "OK cycle stopped"
+        except ValueError as exc:
+            return f"ERR {exc}"
+        return f"ERR unknown command {command!r}\n{self._help()}"
+
+    async def _handle(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        try:
+            line = await asyncio.wait_for(reader.readline(), timeout=30.0)
+            response = self.execute(line.decode("utf-8", errors="replace"), now=_now())
+            writer.write((response.rstrip() + "\n").encode("utf-8"))
+            await writer.drain()
+        except (asyncio.TimeoutError, OSError):
+            pass
+        finally:
+            writer.close()
+            with contextlib.suppress(OSError):
+                await writer.wait_closed()
+
+    def _help(self) -> str:
+        return (
+            "commands: status | layout NAME_OR_INDEX | source SLOT SOURCE | "
+            "cycle SLOT INTERVAL_SECONDS SOURCE... | stop-cycle\n"
+            "sources: empty/off, local/controller, 0x12, sender-c, sender-l1, ..."
+        )
+
+    def _status(self) -> str:
+        desired = ", ".join(
+            f"slot{i}={self._format_source(src)}"
+            for i, src in enumerate(self.source_switcher.sources)
+        )
+        active = ", ".join(
+            f"slot{i}={self._format_source(src)}"
+            for i, src in enumerate(self.source_switcher.active_sources)
+        )
+        online = [
+            self._format_source(addr)
+            for addr in sorted(self.source_switcher.sender_addrs)
+            if self.source_switcher.controller.health.is_online(addr)
+        ]
+        return (
+            f"OK desired: {desired}\n"
+            f"active: {active}\n"
+            f"online: {', '.join(online) if online else 'none'}"
+        )
+
+    def _layout(self, args: list[str]) -> str:
+        if len(args) != 1:
+            raise ValueError("usage: layout NAME_OR_INDEX")
+        layout = self._resolve_layout(args[0])
+        self.pipeline.set_layout(layout)
+        return f"OK layout {layout}"
+
+    def _source(self, args: list[str], now: float) -> str:
+        if len(args) != 2:
+            raise ValueError("usage: source SLOT SOURCE")
+        slot = self._parse_slot(args[0])
+        source = self._parse_source(args[1])
+        self.source_switcher.set_source(slot, source, now=now)
+        return f"OK source slot{slot} {self._format_source(source)}"
+
+    def _cycle(self, args: list[str]) -> str:
+        if len(args) < 3:
+            raise ValueError("usage: cycle SLOT INTERVAL_SECONDS SOURCE...")
+        slot = self._parse_slot(args[0])
+        try:
+            interval = float(args[1])
+        except ValueError as exc:
+            raise ValueError("interval must be a number of seconds") from exc
+        if interval <= 0:
+            raise ValueError("interval must be greater than 0")
+        sources = [self._parse_source(arg) for arg in args[2:]]
+        self._stop_cycle()
+        self._cycle_task = asyncio.create_task(self._cycle_loop(slot, interval, sources))
+        names = " ".join(self._format_source(source) for source in sources)
+        return f"OK cycling slot{slot} every {interval:g}s: {names}"
+
+    async def _cycle_loop(
+        self,
+        slot: int,
+        interval: float,
+        sources: list[int],
+    ) -> None:
+        while True:
+            for source in sources:
+                self.source_switcher.set_source(slot, source, now=_now())
+                await asyncio.sleep(interval)
+
+    def _stop_cycle(self) -> None:
+        if self._cycle_task is None:
+            return
+        self._cycle_task.cancel()
+        self._cycle_task = None
+
+    def _resolve_layout(self, value: str) -> str:
+        if value.isdigit():
+            idx = int(value)
+            if 0 <= idx < len(self.layout_names):
+                return self.layout_names[idx]
+            raise ValueError(f"layout index {idx} out of range")
+        if value in self.layout_names:
+            return value
+        raise ValueError(
+            f"unknown layout {value!r}; choices: {', '.join(self.layout_names)}"
+        )
+
+    def _parse_slot(self, value: str) -> int:
+        try:
+            slot = int(value, 0)
+        except ValueError as exc:
+            raise ValueError("slot must be an integer") from exc
+        if not 0 <= slot < len(self.source_switcher.sources):
+            raise ValueError(f"slot {slot} out of range")
+        return slot
+
+    def _parse_source(self, value: str) -> int:
+        normalized = value.lower()
+        if normalized in ("empty", "off", "none", "black", "0"):
+            return EMPTY_SOURCE
+        if normalized in ("local", "controller", "camera"):
+            return LOCAL_SOURCE
+        if normalized in self.sender_names:
+            return self.sender_names[normalized]
+        try:
+            source = int(value, 0)
+        except ValueError as exc:
+            raise ValueError(f"unknown source {value!r}") from exc
+        if not self.source_switcher._is_known_source(source):
+            raise ValueError(f"unknown source 0x{source:02x}")
+        return source
+
+    def _format_source(self, source: int) -> str:
+        if source == EMPTY_SOURCE:
+            return "empty"
+        if source == LOCAL_SOURCE:
+            return "local"
+        for name, addr in self.sender_names.items():
+            if addr == source:
+                return f"{name}(0x{source:02x})"
+        return f"0x{source:02x}"
+
+
 async def run(cfg: ControllerConfig, *, pipeline=None) -> None:
     if pipeline is None:
         pipeline = ControllerPipeline(
@@ -216,6 +417,12 @@ async def run(cfg: ControllerConfig, *, pipeline=None) -> None:
         layout_names,
         source_switcher,
     )
+    bench_server = BenchCommandServer(
+        pipeline,
+        source_switcher,
+        layout_names,
+        {s.name: s.addr for s in cfg.senders},
+    )
 
     # Build links: UART for FC-N, one TCP link per Sender keyed by route name.
     fc_uart = QueuedUartLink(lambda f: controller.receive(f, _now()))
@@ -243,6 +450,15 @@ async def run(cfg: ControllerConfig, *, pipeline=None) -> None:
     )
     await server.start()
     log.info("Controller listening on :%d", cfg.listen_port)
+    try:
+        await bench_server.start()
+        log.info(
+            "Bench control listening on %s:%d",
+            bench_server.host,
+            bench_server.port,
+        )
+    except OSError:
+        log.exception("bench control server failed to start")
 
     stop_event = asyncio.Event()
 
@@ -285,6 +501,7 @@ async def run(cfg: ControllerConfig, *, pipeline=None) -> None:
         for link in (fc_uart, *tcp_links_by_route.values()):
             await link.stop()
         await server.stop()
+        await bench_server.stop()
 
 
 def _sender_route_name(addr: int) -> str:

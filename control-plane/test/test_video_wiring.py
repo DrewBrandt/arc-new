@@ -20,7 +20,7 @@ from typing import Any
 
 from arc import messages, protocol
 from arc.controller import Controller, ControllerError
-from arc.controller_main import SourceSwitcher, make_fc_video_handler
+from arc.controller_main import BenchCommandServer, SourceSwitcher, make_fc_video_handler
 from arc.pipeline_sender import PipelineError
 from arc.sender import Sender
 from arc.sender_main import _apply_boot_video_command, make_video_command_handler
@@ -511,6 +511,54 @@ class ControllerMainAdapterTests(unittest.TestCase):
         self.assertEqual(pipe.layouts_set, [])
         self.assertEqual(pipe.overlays_set, [])
         self.assertEqual(pipe.sources_set, [])
+
+    def test_bench_command_server_sets_source_by_sender_name(self):
+        pipe = FakeControllerPipeline()
+        c_link = FakeLink()
+        l1_link = FakeLink()
+        controller = Controller(
+            links={"sender-c": c_link, "sender-l1": l1_link},
+            sender_addrs=(protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+        )
+        switcher = SourceSwitcher(
+            controller,
+            pipe,
+            (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+        )
+        controller.health.observe(
+            _frame(
+                src=protocol.ADDR_SENDER_L1,
+                dst=protocol.ADDR_CONTROLLER,
+                family=protocol.FAMILY_NETMGMT,
+                type=protocol.NETMGMT_HEARTBEAT,
+            ),
+            now=1.0,
+        )
+        bench = BenchCommandServer(
+            pipe,
+            switcher,
+            ["local_full", "split"],
+            {"sender-c": protocol.ADDR_SENDER_C, "sender-l1": protocol.ADDR_SENDER_L1},
+        )
+
+        response = bench.execute("source 1 sender-l1", now=1.0)
+
+        self.assertEqual(response, "OK source slot1 sender-l1(0x13)")
+        self.assertEqual(switcher.sources[1], protocol.ADDR_SENDER_L1)
+        self.assertEqual(pipe.sources_set, [(1, protocol.ADDR_SENDER_L1)])
+        self.assertEqual([f.type for f in l1_link.sent], [messages.VideoType.START_STREAM])
+        self.assertEqual(c_link.sent, [])
+
+    def test_bench_command_server_sets_layout_by_name_and_index(self):
+        pipe = FakeControllerPipeline()
+        controller = Controller(sender_addrs=())
+        switcher = SourceSwitcher(controller, pipe, ())
+        bench = BenchCommandServer(pipe, switcher, ["local_full", "split"], {})
+
+        self.assertEqual(bench.execute("layout split"), "OK layout split")
+        self.assertEqual(bench.execute("layout 0"), "OK layout local_full")
+
+        self.assertEqual(pipe.layouts_set, ["split", "local_full"])
 
     def test_pipeline_error_is_swallowed(self):
         class BoomPipeline:

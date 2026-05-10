@@ -44,6 +44,7 @@ CONTROLLER_VIDEO_SINK="kmssink sync=false"
 SENDER_ADDR=""
 SENDER_NAME=""
 SENDER_PAIRED_FC=""
+FORCE_CONFIG=false
 
 # ----------------------------------------------------------------------
 # Helpers
@@ -77,6 +78,9 @@ Sender options:
   --name NAME             Sender name, e.g. sender-c
   --paired-fc ADDR        Paired FC address, e.g. 0x03. Use "none" for video-only.
   --controller-host HOST  Controller mDNS host (default: arcpi1.local)
+
+General options:
+  --force-config          Rewrite generated /etc/arc/*.toml config
 EOF
 }
 
@@ -175,6 +179,10 @@ while [ $# -gt 0 ]; do
         --senders)
             CONTROLLER_SENDERS="${2:-}"
             shift 2
+            ;;
+        --force-config)
+            FORCE_CONFIG=true
+            shift
             ;;
         -h|--help)
             usage
@@ -456,7 +464,7 @@ first_controller_sender_addr() {
 
 write_controller_config() {
     local path="${CONFIG_DIR}/controller.toml"
-    if [ -f "$path" ]; then
+    if [ -f "$path" ] && [ "$FORCE_CONFIG" != "true" ]; then
         info "$path already exists, leaving it unchanged"
         return
     fi
@@ -518,7 +526,7 @@ EOF
 
 write_sender_config() {
     local path="${CONFIG_DIR}/sender.toml"
-    if [ -f "$path" ]; then
+    if [ -f "$path" ] && [ "$FORCE_CONFIG" != "true" ]; then
         info "$path already exists, leaving it unchanged"
         return
     fi

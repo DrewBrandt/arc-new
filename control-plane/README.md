@@ -46,6 +46,22 @@ Controller process:
 python -m arc.controller_main --config /etc/arc/controller.toml
 ```
 
+Bench video controls without an FC:
+
+```
+python -m arc.controller_cli status
+python -m arc.controller_cli source 1 sender-c
+python -m arc.controller_cli source 1 sender-l1
+python -m arc.controller_cli cycle 1 5 sender-c sender-l1
+python -m arc.controller_cli stop-cycle
+python -m arc.controller_cli layout split
+```
+
+The CLI talks to the Controller's localhost-only bench control socket
+(`127.0.0.1:6010`). Use it over SSH on `arcpi1` while `arc-controller`
+is running. It is separate from the flight FC protocol and exists so
+hardware can be tested before FC-N is wired in.
+
 Sender process:
 
 ```
@@ -137,6 +153,17 @@ streaming even with a fake source. If a future kernel/firmware restores
 hardware encode, set `encoder = "v4l2h264enc"` and raise bitrate/framerate
 as appropriate.
 
+When adding a new Sender to an already-configured Controller, regenerate the
+Controller config with an explicit sender list:
+
+```bash
+sudo ./setup.sh controller --force-config \
+  --senders "0x12:sender-c:arcpi2.local:0x03,0x13:sender-l1:arcpi3.local:0x04"
+```
+
+Then reboot the Controller. Without `--force-config`, setup preserves the
+existing `/etc/arc/controller.toml`.
+
 ## Hardware Notes
 
 - The tested Controller target is Raspberry Pi 5 using composite output.
@@ -153,6 +180,9 @@ as appropriate.
   global radio disable.
 - Sender video uses RTP/H.264 over UDP on deterministic ports: Sender-C
   (`0x12`) sends to Controller UDP port `5012`.
+- Bench source switching is available on the Controller with
+  `python -m arc.controller_cli source 1 sender-c` or
+  `python -m arc.controller_cli cycle 1 5 sender-c sender-l1`.
 
 ## Dependencies
 

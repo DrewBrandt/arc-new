@@ -31,6 +31,12 @@ ADDR_SENDER_C = 0x12
 ADDR_SENDER_L1 = 0x13
 ADDR_SENDER_L2 = 0x14
 ADDR_SENDER_GROUND = 0x15
+# Radios (0x20-0x2F reserved for radio-class nodes).
+ADDR_RADIO_R = 0x20  # rocket radio (attached to FC-N over UART)
+ADDR_RADIO_G = 0x21  # ground radio (attached to ground station)
+# Power boards (0x30-0x3F reserved for power-class nodes).
+ADDR_ARCH_MEGA_N = 0x30  # nosecone ARCH-Mega
+ADDR_ARCH_MEGA_L = 0x31  # lower-bay ARCH-Mega
 ADDR_BROADCAST = 0xFF
 
 FLAG_RELIABLE = 0x01
@@ -41,6 +47,8 @@ FAMILY_NETMGMT = 0x00
 FAMILY_FC_COORD = 0x01
 FAMILY_VIDEO = 0x02
 FAMILY_FC_VIDEO = 0x03
+FAMILY_RADIO = 0x04
+FAMILY_POWER = 0x05
 
 NETMGMT_HEARTBEAT = 0x01
 NETMGMT_ACK = 0x02

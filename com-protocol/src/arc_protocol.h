@@ -57,6 +57,12 @@ extern "C" {
 #define ARC_ADDR_SENDER_L1      0x13
 #define ARC_ADDR_SENDER_L2      0x14
 #define ARC_ADDR_SENDER_GROUND  0x15
+// Radios (0x20-0x2F reserved for radio-class nodes).
+#define ARC_ADDR_RADIO_R        0x20  // rocket radio (attached to FC-N over UART)
+#define ARC_ADDR_RADIO_G        0x21  // ground radio (attached to ground station)
+// Power boards (0x30-0x3F reserved for power-class nodes).
+#define ARC_ADDR_ARCH_MEGA_N    0x30  // nosecone ARCH-Mega
+#define ARC_ADDR_ARCH_MEGA_L    0x31  // lower-bay ARCH-Mega
 #define ARC_ADDR_BROADCAST      0xFF
 
 // ----------------------------------------------------------------------
@@ -74,6 +80,8 @@ extern "C" {
 #define ARC_FAMILY_FC_COORD 0x01  // FC-to-FC: telemetry, commands, config
 #define ARC_FAMILY_VIDEO    0x02  // controller-to-sender: stream control, status
 #define ARC_FAMILY_FC_VIDEO 0x03  // FC-to-controller: layout/source commands
+#define ARC_FAMILY_RADIO    0x04  // anyone-to-radio: freq/power control, RSSI status
+#define ARC_FAMILY_POWER    0x05  // anyone-to-ARCH-Mega: output switching, current/voltage status
 
 // ----------------------------------------------------------------------
 // Net-management message types (FAMILY = 0x00).

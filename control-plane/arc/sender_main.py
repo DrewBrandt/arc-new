@@ -66,7 +66,22 @@ def make_video_command_handler(pipeline: SenderPipeline):
     return on_video_command
 
 
-async def run(cfg: SenderConfig, status_provider=None, *, pipeline=None) -> None:
+async def run(
+    cfg: SenderConfig,
+    status_provider=None,
+    *,
+    pipeline=None,
+    stop_event: asyncio.Event | None = None,
+    ready_event: asyncio.Event | None = None,
+) -> None:
+    """Run the Sender process.
+
+    ``stop_event`` lets a test (or any caller owning its own lifecycle)
+    request shutdown without signals. ``ready_event`` is set once the
+    Sender has finished its setup-time work and the asyncio tasks are
+    spawned, so tests can wait deterministically.
+    """
+
     if pipeline is None:
         pipeline = SenderPipeline(cfg)
     video_handler = make_video_command_handler(pipeline)
@@ -96,13 +111,16 @@ async def run(cfg: SenderConfig, status_provider=None, *, pipeline=None) -> None
             now=_now(),
         )
 
-    stop_event = asyncio.Event()
+    owns_stop_event = stop_event is None
+    if stop_event is None:
+        stop_event = asyncio.Event()
 
-    def _on_stop_signal() -> None:
-        log.info("stop signal received")
-        stop_event.set()
+    if owns_stop_event:
+        def _on_stop_signal() -> None:
+            log.info("stop signal received")
+            stop_event.set()
 
-    _install_signal_handlers(_on_stop_signal)
+        _install_signal_handlers(_on_stop_signal)
 
     tasks = [
         asyncio.create_task(
@@ -126,6 +144,9 @@ async def run(cfg: SenderConfig, status_provider=None, *, pipeline=None) -> None
 
     log.info("Sender %s started, target controller=%s:%d",
              cfg.name, cfg.controller_ip, cfg.controller_port)
+
+    if ready_event is not None:
+        ready_event.set()
 
     try:
         await stop_event.wait()

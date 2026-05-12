@@ -1,0 +1,13 @@
+{
+  "name": "arc_protocol",
+  "version": "1.0.0",
+  "description": "ARC framing/COBS/CRC, reliable transport, router, and per-family message catalogs. Portable C, no dynamic allocation.",
+  "keywords": "arc, framing, cobs, crc, protocol, embedded",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src",
+    "flags": ["-std=gnu11"]
+  }
+}

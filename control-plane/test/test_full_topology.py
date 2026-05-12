@@ -11,7 +11,11 @@ import unittest
 
 from arc import messages, protocol as p
 from arc.controller import Controller
-from arc.controller_main import SourceSwitcher, make_fc_video_handler
+from arc.controller_main import (
+    SourceSwitcher,
+    build_fc_video_status_report,
+    make_fc_video_handler,
+)
 from arc.node import Node
 from arc.sender import Sender
 
@@ -305,6 +309,114 @@ class FullTopologyTests(unittest.TestCase):
         self.assertTrue(controller.health.is_online(p.ADDR_SENDER_C))
         self.assertTrue(sender_c.health.is_online(p.ADDR_CONTROLLER))
         self.assertFalse(sender_l2.transmitting)
+
+    def test_get_status_reply_round_trip_to_fc_n(self):
+        topo = self.build_topology()
+        controller: Controller = topo["controller"]
+        sender_c: Sender = topo["sender_c"]
+        sender_l1: Sender = topo["sender_l1"]
+        sender_l2: Sender = topo["sender_l2"]
+        fc_n: Node = topo["fc_n"]
+        pipeline: FakeControllerPipeline = topo["pipeline"]
+        sender_addrs = (p.ADDR_SENDER_C, p.ADDR_SENDER_L1, p.ADDR_SENDER_L2)
+
+        # Re-install the FC_VIDEO handler with controller wired in so
+        # GET_STATUS produces an actual reply.
+        controller.fc_video_handler = make_fc_video_handler(
+            pipeline,
+            ["local_full", "split", "remote_full"],
+            SourceSwitcher(controller, pipeline, sender_addrs),
+            controller=controller,
+            sender_addrs=sender_addrs,
+            fc_n_addr=p.ADDR_FC_N,
+            now=lambda: 7.0,
+        )
+
+        # Sender-C is online and currently being told to stream;
+        # Sender-L1 is online but idle; Sender-L2 has been hard-stopped.
+        for addr, session in (
+            (p.ADDR_SENDER_C, 20),
+            (p.ADDR_SENDER_L1, 21),
+            (p.ADDR_SENDER_L2, 22),
+        ):
+            controller.health.observe(
+                p.Frame(
+                    src=addr,
+                    dst=p.ADDR_CONTROLLER,
+                    flags=0,
+                    session=session,
+                    seq=0,
+                    family=p.FAMILY_NETMGMT,
+                    type=p.NETMGMT_HEARTBEAT,
+                    payload=b"",
+                ),
+                now=6.0,
+            )
+        controller.start_sender(p.ADDR_SENDER_C, now=6.1)
+        controller.hard_stop_sender(p.ADDR_SENDER_L2, now=6.2)
+
+        # Drain inboxes to make the next assertion specific to GET_STATUS.
+        fc_n.inbox.clear()
+
+        # FC-N issues GET_STATUS.
+        request = fc_n.send_local(
+            dst=p.ADDR_CONTROLLER,
+            family=p.FAMILY_FC_VIDEO,
+            type=messages.FcVideoType.GET_STATUS,
+            payload=b"",
+            reliable=True,
+            now=7.0,
+        )
+        self.assertEqual(fc_n.reliable.pending_count, 0)
+        self.assertIn(request, controller.node.inbox)
+
+        # Find the STATUS_REPORT reply that landed at FC-N.
+        replies = [
+            f for f in fc_n.inbox
+            if f.family == p.FAMILY_FC_VIDEO
+            and f.type == messages.FcVideoType.STATUS_REPORT
+        ]
+        self.assertEqual(len(replies), 1)
+        report = messages.FcVideoStatusReport.decode(replies[0].payload)
+
+        # Slot 0 is local camera; slot 1 starts empty (no SET_SOURCE issued).
+        self.assertEqual(
+            report.slots, (p.ADDR_CONTROLLER, p.ADDR_UNASSIGNED)
+        )
+        flags_by_addr = {s.addr: s.flags for s in report.senders}
+        self.assertEqual(set(flags_by_addr), set(sender_addrs))
+        # Sender-C: online + transmitting + recording
+        self.assertEqual(
+            flags_by_addr[p.ADDR_SENDER_C],
+            messages.FC_VIDEO_STATUS_FLAG_ONLINE
+            | messages.FC_VIDEO_STATUS_FLAG_TRANSMITTING
+            | messages.FC_VIDEO_STATUS_FLAG_RECORDING,
+        )
+        # Sender-L1: online, no command issued -> recording assumed (boot default), not transmitting
+        self.assertEqual(
+            flags_by_addr[p.ADDR_SENDER_L1],
+            messages.FC_VIDEO_STATUS_FLAG_ONLINE
+            | messages.FC_VIDEO_STATUS_FLAG_RECORDING,
+        )
+        # Sender-L2: online but HARD_STOP cleared the recording bit
+        self.assertEqual(
+            flags_by_addr[p.ADDR_SENDER_L2],
+            messages.FC_VIDEO_STATUS_FLAG_ONLINE,
+        )
+
+        # Sanity: build_fc_video_status_report agrees with the wire payload.
+        direct = build_fc_video_status_report(
+            controller,
+            None,  # slots are taken from switcher only when one is supplied
+            sender_addrs,
+        )
+        self.assertEqual(
+            {s.addr: s.flags for s in direct.senders},
+            flags_by_addr,
+        )
+
+        # Quiet the senders so unrelated assertions on sender state don't trip.
+        del sender_c, sender_l1, sender_l2
 
 
 if __name__ == "__main__":

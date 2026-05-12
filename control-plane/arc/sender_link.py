@@ -37,6 +37,7 @@ class SenderLink:
         self.send_command = send_command
         self.reliable_commands = reliable_commands
         self.last_status: SenderStatus | None = None
+        self.last_command_type: messages.VideoType | None = None
 
     @property
     def online(self) -> bool:
@@ -83,6 +84,7 @@ class SenderLink:
         payload: bytes = b"",
         now: float = 0.0,
     ) -> protocol.Frame:
+        self.last_command_type = type
         return self.send_command(
             self.sender_addr,
             protocol.FAMILY_VIDEO,

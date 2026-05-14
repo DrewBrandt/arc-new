@@ -6,7 +6,32 @@
       "Bash(python -c ' *)",
       "Bash(python -m unittest discover -s test)",
       "Bash(python -m unittest discover -s test -v)",
-      "Bash(python -m unittest test.test_protocol test.test_router test.test_messages test.test_node_flow test.test_reliable test.test_sender_link test.test_controller)"
+      "Bash(python -m unittest test.test_protocol test.test_router test.test_messages test.test_node_flow test.test_reliable test.test_sender_link test.test_controller)",
+      "Bash(extract-text \"C:\\\\Users\\\\Drew\\\\Documents\\\\arc-new\\\\ARC_Systems_Design.docx\")",
+      "Bash(pandoc --version)",
+      "Bash(ls \"C:\\\\Users\\\\Drew\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\679d77ea-b5b0-4bda-8e81-a2bb83d84d9e\\\\9d28b174-972a-421b-a28d-a44ad2d7f2ff\\\\skills\\\\docx\\\\scripts\\\\office\")",
+      "Bash(python \"C:\\\\Users\\\\Drew\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\679d77ea-b5b0-4bda-8e81-a2bb83d84d9e\\\\9d28b174-972a-421b-a28d-a44ad2d7f2ff\\\\skills\\\\docx\\\\scripts\\\\office\\\\unpack.py\" \"C:\\\\Users\\\\Drew\\\\Documents\\\\arc-new\\\\ARC_Systems_Design.docx\" \"C:\\\\Users\\\\Drew\\\\Documents\\\\arc-new\\\\.arc_design_unpacked\")",
+      "PowerShell(Get-Command gcc, make, cc -ErrorAction SilentlyContinue)",
+      "Bash(mkdir -p build)",
+      "Bash(gcc -std=c11 -Wall -Wextra -Wpedantic -O2 -g -Isrc -o build/test_arc_messages.exe src/arc_messages_netmgmt.c src/arc_messages_video.c src/arc_messages_fc_video.c test/test_arc_messages.c)",
+      "Bash(./build/test_arc_messages.exe)",
+      "Bash(gcc -std=c11 -Wall -Wextra -Wpedantic -O2 -g -Isrc -o build/test_arc_protocol.exe src/arc_protocol.c test/test_arc_protocol.c)",
+      "Bash(gcc -std=c11 -Wall -Wextra -Wpedantic -O2 -g -Isrc -o build/test_arc_reliable.exe src/arc_protocol.c src/arc_reliable.c test/test_arc_reliable.c)",
+      "Bash(gcc -std=c11 -Wall -Wextra -Wpedantic -O2 -g -Isrc -o build/test_arc_router.exe src/arc_protocol.c src/arc_router.c test/test_arc_router.c)",
+      "Bash(./build/test_arc_protocol.exe)",
+      "Bash(./build/test_arc_reliable.exe)",
+      "Bash(./build/test_arc_router.exe)",
+      "Bash(rm -rf build)",
+      "Bash(pio --version)",
+      "Bash(pio run *)",
+      "Bash(gcc -std=c11 -Wall -Wextra -Wpedantic -O2 -g -Isrc -o build/test_arc_messages.exe src/arc_messages_netmgmt.c src/arc_messages_video.c src/arc_messages_fc_video.c src/arc_messages_radio.c src/arc_messages_power.c test/test_arc_messages.c)",
+      "Bash(python \"C:\\\\Users\\\\Drew\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\679d77ea-b5b0-4bda-8e81-a2bb83d84d9e\\\\9d28b174-972a-421b-a28d-a44ad2d7f2ff\\\\skills\\\\docx\\\\scripts\\\\office\\\\unpack.py\" \"C:\\\\Users\\\\Drew\\\\Documents\\\\arc-new\\\\ARC_Systems_Design.docx\" \"C:\\\\Users\\\\Drew\\\\Documents\\\\arc-new\\\\.docx_work\")",
+      "Bash(python \"C:\\\\Users\\\\Drew\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\679d77ea-b5b0-4bda-8e81-a2bb83d84d9e\\\\9d28b174-972a-421b-a28d-a44ad2d7f2ff\\\\skills\\\\docx\\\\scripts\\\\office\\\\pack.py\" \"C:\\\\Users\\\\Drew\\\\Documents\\\\arc-new\\\\.docx_work\" \"C:\\\\Users\\\\Drew\\\\Documents\\\\arc-new\\\\ARC_Systems_Design.docx\" --original \"C:\\\\Users\\\\Drew\\\\Documents\\\\arc-new\\\\ARC_Systems_Design.docx\")",
+      "Bash(python \"C:\\\\Users\\\\Drew\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\679d77ea-b5b0-4bda-8e81-a2bb83d84d9e\\\\9d28b174-972a-421b-a28d-a44ad2d7f2ff\\\\skills\\\\docx\\\\scripts\\\\office\\\\pack.py\" \"C:\\\\Users\\\\Drew\\\\Documents\\\\arc-new\\\\.docx_work\" \"C:\\\\Users\\\\Drew\\\\Documents\\\\arc-new\\\\ARC_Systems_Design.docx\" --original \"C:\\\\Users\\\\Drew\\\\Documents\\\\arc-new\\\\ARC_Systems_Design.docx\" --validate false)",
+      "Bash(git add *)",
+      "Bash(git reset *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }

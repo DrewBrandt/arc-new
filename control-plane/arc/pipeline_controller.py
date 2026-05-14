@@ -221,6 +221,7 @@ class ControllerPipeline:
         self._selectors: list[Any] = []
         self._bus: Any = None
         self._gst: Any = None
+        self._buffer_counts: dict[str, int] = {}
         self._current_layout: str | None = None
         self._overlay_text: str = self.callsign
 
@@ -249,6 +250,8 @@ class ControllerPipeline:
             raise PipelineError(
                 "pipeline missing required elements 'comp' or 'overlay'"
             )
+        self._install_buffer_probe("comp_src", self._compositor, "src")
+        self._install_buffer_probe("overlay_src", self._textoverlay, "src")
         self._selectors = []
         if self.switch_mode == "selector":
             for slot_id in range(_SLOT_COUNT):
@@ -256,6 +259,7 @@ class ControllerPipeline:
                 if selector is None:
                     raise PipelineError(f"pipeline missing selector for slot {slot_id}")
                 self._selectors.append(selector)
+                self._install_buffer_probe(f"slot{slot_id}_src", selector, "src")
             self._configure_selector_pads()
 
         self._textoverlay.set_property("text", self._overlay_text)
@@ -282,6 +286,7 @@ class ControllerPipeline:
         self._textoverlay = None
         self._selectors = []
         self._bus = None
+        self._buffer_counts = {}
 
     def set_layout(self, name: str) -> None:
         """Switch to a named layout. Safe to call from asyncio."""
@@ -373,6 +378,14 @@ class ControllerPipeline:
                     warning,
                     debug,
                 )
+
+    def telemetry_snapshot(self) -> dict[str, object]:
+        """Return low-overhead live Gst counters for Controller telemetry."""
+
+        return {
+            "buffers": dict(self._buffer_counts),
+            "queues": self._queue_levels(),
+        }
 
     # --- testable internals ---------------------------------------------
 
@@ -474,6 +487,58 @@ class ControllerPipeline:
                 except TypeError:
                     # Older/fake pads may not expose the input-selector pad property.
                     pass
+
+    def _install_buffer_probe(self, name: str, element: Any, pad_name: str) -> None:
+        if self._gst is None:
+            return
+        get_static_pad = getattr(element, "get_static_pad", None)
+        if get_static_pad is None:
+            return
+        pad = get_static_pad(pad_name)
+        if pad is None:
+            log.warning("pipeline element %s missing pad %s for telemetry", name, pad_name)
+            return
+        self._buffer_counts[name] = 0
+
+        def _count_buffer(_pad: Any, _info: Any) -> Any:
+            self._buffer_counts[name] = self._buffer_counts.get(name, 0) + 1
+            return self._gst.PadProbeReturn.OK
+
+        pad.add_probe(self._gst.PadProbeType.BUFFER, _count_buffer)
+
+    def _queue_levels(self) -> dict[str, dict[str, int]]:
+        if self._pipeline is None:
+            return {}
+        levels: dict[str, dict[str, int]] = {}
+        iterator = self._pipeline.iterate_elements()
+        while True:
+            result, element = iterator.next()
+            if result == self._gst.IteratorResult.OK:
+                try:
+                    factory = element.get_factory()
+                    factory_name = factory.get_name() if factory is not None else ""
+                except AttributeError:
+                    factory_name = ""
+                if factory_name != "queue":
+                    continue
+                name = element.get_name()
+                entry: dict[str, int] = {}
+                for prop in (
+                    "current-level-buffers",
+                    "current-level-bytes",
+                    "current-level-time",
+                ):
+                    try:
+                        entry[prop] = int(element.get_property(prop))
+                    except (TypeError, ValueError):
+                        pass
+                levels[name] = entry
+                continue
+            if result == self._gst.IteratorResult.RESYNC:
+                iterator.resync()
+                continue
+            break
+        return levels
 
     def _initial_layout(self) -> Layout | None:
         if self.startup_layout is not None:

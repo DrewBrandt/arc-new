@@ -46,23 +46,32 @@ def _config(
 class FakePad:
     def __init__(self):
         self.props = {}
+        self.probes = []
 
     def set_property(self, name, value):
         self.props[name] = value
+
+    def add_probe(self, probe_type, callback):
+        self.probes.append((probe_type, callback))
+        return len(self.probes)
 
 
 class FakeElement:
     def __init__(self):
         self.props = {}
+        self.pads = {"src": FakePad()}
 
     def set_property(self, name, value):
         self.props[name] = value
+
+    def get_static_pad(self, name):
+        return self.pads.get(name)
 
 
 class FakeSelector(FakeElement):
     def __init__(self):
         super().__init__()
-        self.pads = {f"sink_{idx}": FakePad() for idx in range(8)}
+        self.pads = {"src": FakePad(), **{f"sink_{idx}": FakePad() for idx in range(8)}}
 
     def get_static_pad(self, name):
         return self.pads.get(name)
@@ -70,7 +79,12 @@ class FakeSelector(FakeElement):
 
 class FakeCompositor:
     def __init__(self):
-        self.pads = {"sink_0": FakePad(), "sink_1": FakePad(), "sink_2": FakePad()}
+        self.pads = {
+            "src": FakePad(),
+            "sink_0": FakePad(),
+            "sink_1": FakePad(),
+            "sink_2": FakePad(),
+        }
 
     def get_static_pad(self, name):
         return self.pads.get(name)
@@ -96,13 +110,40 @@ class FakeGstPipeline:
     def get_bus(self):
         return FakeBus()
 
+    def iterate_elements(self):
+        return FakeIterator([])
+
 
 class FakeBus:
     def pop(self):
         return None
 
 
+class FakeIterator:
+    def __init__(self, elements):
+        self.elements = list(elements)
+
+    def next(self):
+        if not self.elements:
+            return FakeGst.IteratorResult.DONE, None
+        return FakeGst.IteratorResult.OK, self.elements.pop(0)
+
+    def resync(self):
+        pass
+
+
 class FakeGst:
+    class PadProbeType:
+        BUFFER = "BUFFER"
+
+    class PadProbeReturn:
+        OK = "OK"
+
+    class IteratorResult:
+        OK = "OK"
+        RESYNC = "RESYNC"
+        DONE = "DONE"
+
     class MessageType:
         ERROR = "ERROR"
         WARNING = "WARNING"

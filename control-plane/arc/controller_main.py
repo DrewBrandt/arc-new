@@ -105,6 +105,7 @@ class _ControllerTelemetry:
         self._last_tick_at: float | None = None
         self._max_tick_gap_s = 0.0
         self._last_sample: _TelemetrySample | None = None
+        self._last_gst_buffers: dict[str, int] = {}
 
     def observe_tick(self, now: float) -> None:
         if self._last_tick_at is not None:
@@ -128,10 +129,11 @@ class _ControllerTelemetry:
             f"{name}:online={int(link.online)},q={link.queue.qsize()},drop={link.dropped}"
             for name, link in sorted(self.tcp_links_by_route.items())
         )
+        gst = self._gst_summary(sample)
         log.info(
             "telemetry cpu=%.1f%% rss=%s temp=%s load1=%s tick_gap=%.1fms "
             "pending=%d inbox=%d failed=%d unhandled=%d uart_online=%d "
-            "uart_q=%d uart_drop=%d uart_bad=%d desired=%s active=%s tcp=[%s]",
+            "uart_q=%d uart_drop=%d uart_bad=%d desired=%s active=%s tcp=[%s] gst=[%s]",
             cpu_pct,
             rss,
             temp,
@@ -148,6 +150,7 @@ class _ControllerTelemetry:
             _format_sources(self.source_switcher.sources),
             _format_sources(self.source_switcher.active_sources),
             tcp,
+            gst,
         )
         self._last_sample = sample
         self._max_tick_gap_s = 0.0
@@ -168,6 +171,53 @@ class _ControllerTelemetry:
         elapsed = max(sample.now - self._last_sample.now, 1e-6)
         cpu_elapsed = sample.process_time_s - self._last_sample.process_time_s
         return max(0.0, (cpu_elapsed / elapsed) * 100.0)
+
+    def _gst_summary(self, sample: _TelemetrySample) -> str:
+        snapshot_fn = getattr(self.source_switcher.pipeline, "telemetry_snapshot", None)
+        if snapshot_fn is None:
+            return "n/a"
+        try:
+            snapshot = snapshot_fn()
+        except Exception:
+            log.exception("video pipeline telemetry snapshot failed")
+            return "error"
+
+        buffers = snapshot.get("buffers", {})
+        queues = snapshot.get("queues", {})
+        elapsed = (
+            max(sample.now - self._last_sample.now, 1e-6)
+            if self._last_sample is not None
+            else self.interval_s
+        )
+        buffer_parts: list[str] = []
+        if isinstance(buffers, dict):
+            for name, count in sorted(buffers.items()):
+                try:
+                    total = int(count)
+                except (TypeError, ValueError):
+                    continue
+                prior = self._last_gst_buffers.get(name, total)
+                fps = max(0.0, (total - prior) / elapsed)
+                buffer_parts.append(f"{name}={fps:.1f}fps")
+                self._last_gst_buffers[name] = total
+
+        queue_parts: list[str] = []
+        if isinstance(queues, dict):
+            for name, levels in sorted(queues.items()):
+                if not isinstance(levels, dict):
+                    continue
+                buffers_level = levels.get("current-level-buffers")
+                time_level = levels.get("current-level-time")
+                if time_level is not None:
+                    try:
+                        ms = int(time_level) / 1_000_000.0
+                    except (TypeError, ValueError):
+                        ms = 0.0
+                    queue_parts.append(f"{name}:b={buffers_level},t={ms:.1f}ms")
+                else:
+                    queue_parts.append(f"{name}:b={buffers_level}")
+
+        return f"buffers({','.join(buffer_parts) or 'none'}) queues({','.join(queue_parts) or 'none'})"
 
 
 def _format_sources(sources) -> str:

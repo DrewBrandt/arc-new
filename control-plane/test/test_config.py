@@ -86,6 +86,44 @@ class ControllerConfigTests(unittest.TestCase):
         self.assertEqual(cfg.video.switch_mode, "selector")
         self.assertTrue(cfg.video.warm_remote_streams)
 
+    def test_controller_local_camera_rotation_loads(self):
+        path = write_toml(
+            """
+            [node]
+            address = 0x10
+
+            [uart]
+            device = "/dev/serial0"
+
+            [overlay]
+            callsign = "KD3BBP"
+
+            [video]
+            local_camera_rotation = 90
+            """
+        )
+        cfg = load_controller_config(path)
+        self.assertEqual(cfg.video.local_camera_rotation, 90)
+
+    def test_controller_local_camera_rotation_rejects_off_axis(self):
+        path = write_toml(
+            """
+            [node]
+            address = 0x10
+
+            [uart]
+            device = "/dev/serial0"
+
+            [overlay]
+            callsign = "KD3BBP"
+
+            [video]
+            local_camera_rotation = 45
+            """
+        )
+        with self.assertRaises(ConfigError):
+            load_controller_config(path)
+
     def test_controller_video_defaults_to_selector_switching(self):
         path = write_toml(
             """
@@ -213,6 +251,56 @@ class SenderConfigTests(unittest.TestCase):
             height = 480
             framerate = 30
             bitrate = 2500000
+            """
+        )
+        with self.assertRaises(ConfigError):
+            load_sender_config(path)
+
+    def test_video_rotation_loads(self):
+        path = write_toml(
+            """
+            [node]
+            address = 0x12
+
+            [controller]
+            ip = "10.42.0.1"
+
+            [video]
+            bitrate = 2500000
+            rotation = 180
+            """
+        )
+        cfg = load_sender_config(path)
+        self.assertEqual(cfg.video.rotation, 180)
+
+    def test_video_rotation_default_is_zero(self):
+        path = write_toml(
+            """
+            [node]
+            address = 0x12
+
+            [controller]
+            ip = "10.42.0.1"
+
+            [video]
+            bitrate = 2500000
+            """
+        )
+        cfg = load_sender_config(path)
+        self.assertEqual(cfg.video.rotation, 0)
+
+    def test_video_rotation_rejects_off_axis(self):
+        path = write_toml(
+            """
+            [node]
+            address = 0x12
+
+            [controller]
+            ip = "10.42.0.1"
+
+            [video]
+            bitrate = 2500000
+            rotation = 45
             """
         )
         with self.assertRaises(ConfigError):

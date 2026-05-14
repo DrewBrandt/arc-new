@@ -1,8 +1,9 @@
 // arc_messages_power.h
 // Payload helpers for the POWER family (FAMILY = 0x05).
 //
-// The two ARCH-Mega power boards in the system are addressed as
-// ARC_ADDR_ARCH_MEGA_N (nosecone) and ARC_ADDR_ARCH_MEGA_L (lower bay).
+// The ARCH-Mega power boards in the system are addressed as
+// ARC_ADDR_ARCH_MEGA_N (nosecone), ARC_ADDR_ARCH_MEGA_C (center section),
+// and ARC_ADDR_ARCH_MEGA_L (lower bay).
 // Each board controls 6 channels (5V/3A each, 50W board total). The
 // protocol supports up to 8 channels per board: SET_OUTPUT_MASK uses
 // 1-byte enable/state masks, and STATUS_REPORT carries an explicit

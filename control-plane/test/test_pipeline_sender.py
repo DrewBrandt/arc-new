@@ -27,6 +27,7 @@ def _config(
     framerate: int = 30,
     bitrate: int = 2_500_000,
     recording_path: str = "/tmp/arc-recordings",
+    rotation: int = 0,
 ) -> SenderConfig:
     return SenderConfig(
         addr=addr,
@@ -42,6 +43,7 @@ def _config(
             bitrate_bps=bitrate,
             recording_path=recording_path,
             encoder="v4l2h264enc",
+            rotation=rotation,
         ),
         uart=UartConfig(device="/dev/ttyAMA0"),
     )
@@ -150,6 +152,25 @@ class PipelineDescriptionTests(unittest.TestCase):
         self.assertIn("x264enc tune=zerolatency name=enc", desc)
         self.assertEqual(pipe.recording_dir, Path("/data/arc"))
         self.assertIn(str(Path("/data/arc") / "sender-c-20260508-123456.mp4"), desc)
+
+    def test_default_rotation_emits_no_videoflip(self):
+        pipe = SenderPipeline(_config(), clock=_fixed_clock())
+        self.assertNotIn("videoflip", pipe.build_pipeline_description())
+
+    def test_rotation_inserts_videoflip_before_encoder(self):
+        for degrees, method in ((90, 1), (180, 2), (270, 3)):
+            with self.subTest(degrees=degrees):
+                pipe = SenderPipeline(_config(rotation=degrees), clock=_fixed_clock())
+                desc = pipe.build_pipeline_description()
+                self.assertIn(f"videoflip method={method}", desc)
+                # videoflip must sit between videoconvert and the encoder.
+                self.assertLess(desc.find("videoconvert"), desc.find("videoflip"))
+                self.assertLess(desc.find("videoflip"), desc.find("v4l2h264enc"))
+
+    def test_invalid_rotation_raises_pipeline_error(self):
+        pipe = SenderPipeline(_config(rotation=45), clock=_fixed_clock())
+        with self.assertRaises(PipelineError):
+            pipe.build_pipeline_description()
 
     def test_encoder_can_come_from_config(self):
         cfg = _config()

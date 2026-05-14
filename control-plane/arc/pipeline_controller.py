@@ -57,11 +57,31 @@ _LOW_LATENCY_QUEUE = (
     "queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream"
 )
 _RTP_JITTER_LATENCY_MS = 40
-_DEFAULT_LOCAL_CAMERA = (
-    "libcamerasrc ! videoconvert"
-    " ! video/x-raw,width=640,height=480,format=I420,framerate=30/1"
-    f" ! {_LOW_LATENCY_QUEUE}"
-)
+# Map user-facing rotation (degrees clockwise) to videoflip method values.
+# videoflip method nicks: 0=none, 1=clockwise (90 CW), 2=rotate-180,
+# 3=counterclockwise (90 CCW, i.e. 270 CW).
+_ROTATION_TO_VIDEOFLIP_METHOD = {0: 0, 90: 1, 180: 2, 270: 3}
+
+
+def _build_local_camera_source(rotation: int) -> str:
+    if rotation not in _ROTATION_TO_VIDEOFLIP_METHOD:
+        raise PipelineError(
+            f"unsupported local_camera_rotation {rotation}; expected 0, 90, 180, or 270"
+        )
+    flip_chain = (
+        f" ! videoflip method={_ROTATION_TO_VIDEOFLIP_METHOD[rotation]}"
+        if rotation != 0
+        else ""
+    )
+    return (
+        "libcamerasrc ! videoconvert"
+        " ! video/x-raw,width=640,height=480,format=I420,framerate=30/1"
+        f"{flip_chain}"
+        f" ! {_LOW_LATENCY_QUEUE}"
+    )
+
+
+_DEFAULT_LOCAL_CAMERA = _build_local_camera_source(0)
 _BLACK_SOURCE = (
     "videotestsrc pattern=black is-live=true"
     " ! video/x-raw,width=640,height=480,framerate=30/1"
@@ -175,6 +195,9 @@ class ControllerPipeline:
         self.config = config
         self.callsign = callsign or config.callsign
         self._sender_ips = {sender.addr: sender.ip for sender in config.senders}
+        self._local_camera_source = _build_local_camera_source(
+            config.video.local_camera_rotation
+        )
         self._selector_sources = (
             _EMPTY_SOURCE,
             _LOCAL_SOURCE,
@@ -184,7 +207,7 @@ class ControllerPipeline:
             source: f"sink_{idx}" for idx, source in enumerate(self._selector_sources)
         }
         self._slot_sources = [
-            SourceProps(_LOCAL_SOURCE, slot_0_source or _DEFAULT_LOCAL_CAMERA),
+            SourceProps(_LOCAL_SOURCE, slot_0_source or self._local_camera_source),
             SourceProps(_EMPTY_SOURCE, slot_1_source or _BLACK_SOURCE),
         ]
         self.sink_factory = sink
@@ -421,7 +444,7 @@ class ControllerPipeline:
         if source_addr == _EMPTY_SOURCE:
             return SourceProps(source_addr, _BLACK_SOURCE)
         if source_addr == _LOCAL_SOURCE:
-            return SourceProps(source_addr, _DEFAULT_LOCAL_CAMERA)
+            return SourceProps(source_addr, self._local_camera_source)
         if source_addr not in self._sender_ips:
             raise PipelineError(f"unknown source sender 0x{source_addr:02x}")
         return SourceProps(

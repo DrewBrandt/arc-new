@@ -63,6 +63,7 @@ extern "C" {
 // Power boards (0x30-0x3F reserved for power-class nodes).
 #define ARC_ADDR_ARCH_MEGA_N    0x30  // nosecone ARCH-Mega
 #define ARC_ADDR_ARCH_MEGA_L    0x31  // lower-bay ARCH-Mega
+#define ARC_ADDR_ARCH_MEGA_C    0x32  // center-section ARCH-Mega
 #define ARC_ADDR_BROADCAST      0xFF
 
 // ----------------------------------------------------------------------

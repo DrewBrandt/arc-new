@@ -55,6 +55,10 @@ I_FRAME_PERIOD = 10  # one keyframe every 10 frames (~333 ms at 30 fps).
 _BRANCH_QUEUE = (
     "queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream"
 )
+# Map user-facing rotation (degrees clockwise) to videoflip method values.
+# videoflip method nicks: 0=none, 1=clockwise (90 CW), 2=rotate-180,
+# 3=counterclockwise (90 CCW, i.e. 270 CW).
+_ROTATION_TO_VIDEOFLIP_METHOD = {0: 0, 90: 1, 180: 2, 270: 3}
 
 
 class SenderPipeline:
@@ -189,12 +193,23 @@ class SenderPipeline:
         if rec_path is None:
             rec_path = self._next_recording_path()
         encoder = self._encoder_description()
+        rotation = self.config.video.rotation
+        if rotation not in _ROTATION_TO_VIDEOFLIP_METHOD:
+            raise PipelineError(
+                f"unsupported rotation {rotation}; expected 0, 90, 180, or 270"
+            )
+        flip_chain = (
+            f" ! videoflip method={_ROTATION_TO_VIDEOFLIP_METHOD[rotation]}"
+            if rotation != 0
+            else ""
+        )
         return (
             f"{self.camera_source}"
             f" ! video/x-raw,width={self.config.video.width},"
             f"height={self.config.video.height},"
             f"framerate={self.config.video.framerate}/1"
             f" ! videoconvert"
+            f"{flip_chain}"
             f" ! {encoder}"
             f" ! video/x-h264,profile=baseline"
             f" ! h264parse config-interval=1"

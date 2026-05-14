@@ -11,7 +11,7 @@ from __future__ import annotations
 import unittest
 
 from arc import protocol
-from arc.config import ControllerConfig, SenderEntry, UartConfig
+from arc.config import ControllerConfig, ControllerVideoConfig, SenderEntry, UartConfig
 from arc.pipeline_controller import (
     ControllerPipeline,
     Layout,
@@ -21,7 +21,10 @@ from arc.pipeline_controller import (
 )
 
 
-def _config(layouts: dict | None = None) -> ControllerConfig:
+def _config(
+    layouts: dict | None = None,
+    video: ControllerVideoConfig | None = None,
+) -> ControllerConfig:
     return ControllerConfig(
         addr=protocol.ADDR_CONTROLLER,
         callsign="KD3BBP",
@@ -36,6 +39,7 @@ def _config(layouts: dict | None = None) -> ControllerConfig:
             ),
         ),
         layouts=layouts or {},
+        video=video or ControllerVideoConfig(),
     )
 
 
@@ -339,6 +343,35 @@ class ControllerPipelineTests(unittest.TestCase):
         desc = pipe.build_pipeline_description()
         self.assertIn("udpsrc port=5012", desc)
         self.assertIn("libcamerasrc", desc)
+
+    def test_default_local_camera_rotation_emits_no_videoflip(self):
+        pipe = ControllerPipeline(_config())
+        self.assertNotIn("videoflip", pipe.build_pipeline_description())
+
+    def test_local_camera_rotation_inserts_videoflip(self):
+        for degrees, method in ((90, 1), (180, 2), (270, 3)):
+            with self.subTest(degrees=degrees):
+                pipe = ControllerPipeline(
+                    _config(video=ControllerVideoConfig(local_camera_rotation=degrees))
+                )
+                desc = pipe.build_pipeline_description()
+                self.assertIn(f"videoflip method={method}", desc)
+
+    def test_invalid_local_camera_rotation_raises(self):
+        with self.assertRaises(PipelineError):
+            ControllerPipeline(
+                _config(video=ControllerVideoConfig(local_camera_rotation=45))
+            )
+
+    def test_local_camera_rotation_not_applied_to_remote_senders(self):
+        pipe = ControllerPipeline(
+            _config(video=ControllerVideoConfig(local_camera_rotation=180))
+        )
+        pipe.set_source(1, protocol.ADDR_SENDER_C)
+        desc = pipe.build_pipeline_description()
+        # Exactly one videoflip in the graph (the local-camera branch), not
+        # one per Sender source.
+        self.assertEqual(desc.count("videoflip"), 1)
 
     def test_default_mixer_is_compositor(self):
         pipe = ControllerPipeline(_config())

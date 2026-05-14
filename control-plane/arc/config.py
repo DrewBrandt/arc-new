@@ -42,6 +42,7 @@ class VideoConfig:
     encoder: str = "v4l2h264enc"
     recording_path: str = "/var/arc/recordings/"
     start_stream_on_boot: bool = False
+    rotation: int = 0  # degrees clockwise: 0, 90, 180, 270
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,7 @@ class ControllerVideoConfig:
     startup_layout: str | None = None
     switch_mode: str = "selector"
     warm_remote_streams: bool = False
+    local_camera_rotation: int = 0  # degrees clockwise: 0, 90, 180, 270
 
 
 @dataclass(frozen=True)
@@ -145,6 +147,11 @@ def load_controller_config(path: str | Path) -> ControllerConfig:
             video_section.get("switch_mode", "selector"), path, "[video].switch_mode"
         ),
         warm_remote_streams=bool(video_section.get("warm_remote_streams", False)),
+        local_camera_rotation=_as_rotation(
+            video_section.get("local_camera_rotation", 0),
+            path,
+            "[video].local_camera_rotation",
+        ),
     )
 
     return ControllerConfig(
@@ -191,6 +198,7 @@ def load_sender_config(path: str | Path) -> SenderConfig:
             "[recording].path",
         ),
         start_stream_on_boot=bool(video_section.get("start_stream_on_boot", False)),
+        rotation=_as_rotation(video_section.get("rotation", 0), path, "[video].rotation"),
     )
 
     uart: UartConfig | None = None
@@ -277,3 +285,11 @@ def _optional_str(value: object, path: str | Path, name: str) -> str | None:
     if value is None:
         return None
     return _as_str(value, path, name)
+
+
+def _as_rotation(value: object, path: str | Path, name: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ConfigError(f"{path}: {name} must be an integer")
+    if value not in (0, 90, 180, 270):
+        raise ConfigError(f"{path}: {name} must be 0, 90, 180, or 270; got {value}")
+    return value

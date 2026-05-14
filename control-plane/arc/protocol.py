@@ -37,6 +37,7 @@ ADDR_RADIO_G = 0x21  # ground radio (attached to ground station)
 # Power boards (0x30-0x3F reserved for power-class nodes).
 ADDR_ARCH_MEGA_N = 0x30  # nosecone ARCH-Mega
 ADDR_ARCH_MEGA_L = 0x31  # lower-bay ARCH-Mega
+ADDR_ARCH_MEGA_C = 0x32  # center-section ARCH-Mega
 ADDR_BROADCAST = 0xFF
 
 FLAG_RELIABLE = 0x01

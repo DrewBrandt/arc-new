@@ -31,7 +31,11 @@
       "Bash(git add *)",
       "Bash(git reset *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(python -m pytest test/test_pipeline_controller.py -q)",
+      "PowerShell(python -m unittest discover -s control-plane/test -p \"test_pipeline_controller.py\" -v 2>&1)",
+      "Bash(python -m unittest discover -s test -t . -v)",
+      "Bash(python -m unittest test.test_pipeline_controller test.test_controller)"
     ]
   }
 }

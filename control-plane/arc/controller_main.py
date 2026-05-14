@@ -184,6 +184,7 @@ class _ControllerTelemetry:
 
         buffers = snapshot.get("buffers", {})
         queues = snapshot.get("queues", {})
+        latency = snapshot.get("latency", {})
         elapsed = (
             max(sample.now - self._last_sample.now, 1e-6)
             if self._last_sample is not None
@@ -201,23 +202,53 @@ class _ControllerTelemetry:
                 buffer_parts.append(f"{name}={fps:.1f}fps")
                 self._last_gst_buffers[name] = total
 
+        # Suppress queues that are empty -- with leaky=downstream queues at
+        # max-size-buffers=2 the vast majority sit at zero and just clutter
+        # the log. Total count is reported so a regression in *which* queue
+        # appears is still visible.
         queue_parts: list[str] = []
+        total_queues = 0
         if isinstance(queues, dict):
+            total_queues = len(queues)
             for name, levels in sorted(queues.items()):
                 if not isinstance(levels, dict):
                     continue
-                buffers_level = levels.get("current-level-buffers")
-                time_level = levels.get("current-level-time")
-                if time_level is not None:
-                    try:
-                        ms = int(time_level) / 1_000_000.0
-                    except (TypeError, ValueError):
-                        ms = 0.0
-                    queue_parts.append(f"{name}:b={buffers_level},t={ms:.1f}ms")
-                else:
-                    queue_parts.append(f"{name}:b={buffers_level}")
+                buffers_level = levels.get("current-level-buffers") or 0
+                time_level = levels.get("current-level-time") or 0
+                try:
+                    b_int = int(buffers_level)
+                except (TypeError, ValueError):
+                    b_int = 0
+                try:
+                    t_int = int(time_level)
+                except (TypeError, ValueError):
+                    t_int = 0
+                if b_int == 0 and t_int == 0:
+                    continue
+                queue_parts.append(f"{name}:b={b_int},t={t_int/1_000_000.0:.1f}ms")
 
-        return f"buffers({','.join(buffer_parts) or 'none'}) queues({','.join(queue_parts) or 'none'})"
+        latency_parts: list[str] = []
+        if isinstance(latency, dict):
+            for name, stats in sorted(latency.items()):
+                if not isinstance(stats, dict):
+                    continue
+                try:
+                    last_ms = int(stats.get("last_ns", 0)) / 1_000_000.0
+                    max_ms = int(stats.get("max_ns", 0)) / 1_000_000.0
+                except (TypeError, ValueError):
+                    continue
+                latency_parts.append(f"{name}=last={last_ms:.1f}ms,max={max_ms:.1f}ms")
+
+        queues_summary = (
+            f"{len(queue_parts)}/{total_queues}nonzero:{','.join(queue_parts)}"
+            if queue_parts
+            else f"all-empty/{total_queues}"
+        )
+        return (
+            f"buffers({','.join(buffer_parts) or 'none'})"
+            f" queues({queues_summary})"
+            f" latency({','.join(latency_parts) or 'none'})"
+        )
 
 
 def _format_sources(sources) -> str:

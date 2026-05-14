@@ -222,6 +222,7 @@ class ControllerPipeline:
         self._bus: Any = None
         self._gst: Any = None
         self._buffer_counts: dict[str, int] = {}
+        self._buffer_latency_ns: dict[str, dict[str, int]] = {}
         self._current_layout: str | None = None
         self._overlay_text: str = self.callsign
 
@@ -251,6 +252,10 @@ class ControllerPipeline:
                 "pipeline missing required elements 'comp' or 'overlay'"
             )
         self._install_buffer_probe("comp_src", self._compositor, "src")
+        for pad_name in ("sink_0", "sink_1", "sink_2"):
+            self._install_buffer_probe(
+                f"comp_{pad_name}", self._compositor, pad_name
+            )
         self._install_buffer_probe("overlay_src", self._textoverlay, "src")
         self._selectors = []
         if self.switch_mode == "selector":
@@ -287,6 +292,7 @@ class ControllerPipeline:
         self._selectors = []
         self._bus = None
         self._buffer_counts = {}
+        self._buffer_latency_ns = {}
 
     def set_layout(self, name: str) -> None:
         """Switch to a named layout. Safe to call from asyncio."""
@@ -380,12 +386,33 @@ class ControllerPipeline:
                 )
 
     def telemetry_snapshot(self) -> dict[str, object]:
-        """Return low-overhead live Gst counters for Controller telemetry."""
+        """Return low-overhead live Gst counters for Controller telemetry.
+
+        ``latency`` is window-relative: ``max_ns`` resets each snapshot so a
+        steady rising ``last_ns`` (without ``max_ns`` exploding within a
+        window) indicates monotonic latency growth rather than jitter.
+        """
 
         return {
             "buffers": dict(self._buffer_counts),
             "queues": self._queue_levels(),
+            "latency": self._drain_latency(),
         }
+
+    def _drain_latency(self) -> dict[str, dict[str, int]]:
+        out: dict[str, dict[str, int]] = {}
+        for name, stats in self._buffer_latency_ns.items():
+            samples = stats.get("samples", 0)
+            if samples <= 0:
+                continue
+            out[name] = {
+                "last_ns": int(stats.get("last_ns", 0)),
+                "max_ns": int(stats.get("max_ns", 0)),
+                "samples": int(samples),
+            }
+            stats["max_ns"] = 0
+            stats["samples"] = 0
+        return out
 
     # --- testable internals ---------------------------------------------
 
@@ -499,12 +526,38 @@ class ControllerPipeline:
             log.warning("pipeline element %s missing pad %s for telemetry", name, pad_name)
             return
         self._buffer_counts[name] = 0
+        self._buffer_latency_ns[name] = {"last_ns": 0, "max_ns": 0, "samples": 0}
+        Gst = self._gst
+        clock_time_none = getattr(Gst, "CLOCK_TIME_NONE", 0xFFFFFFFFFFFFFFFF)
 
-        def _count_buffer(_pad: Any, _info: Any) -> Any:
+        def _on_buffer(_pad: Any, info: Any) -> Any:
             self._buffer_counts[name] = self._buffer_counts.get(name, 0) + 1
-            return self._gst.PadProbeReturn.OK
+            pipeline = self._pipeline
+            if pipeline is None or info is None:
+                return Gst.PadProbeReturn.OK
+            buffer = info.get_buffer()
+            if buffer is None:
+                return Gst.PadProbeReturn.OK
+            pts = buffer.pts
+            if pts == clock_time_none:
+                return Gst.PadProbeReturn.OK
+            clock = pipeline.get_clock()
+            if clock is None:
+                return Gst.PadProbeReturn.OK
+            running_time = clock.get_time() - pipeline.get_base_time()
+            lat = running_time - pts
+            if lat < 0:
+                return Gst.PadProbeReturn.OK
+            stats = self._buffer_latency_ns.get(name)
+            if stats is None:
+                return Gst.PadProbeReturn.OK
+            stats["last_ns"] = lat
+            if lat > stats["max_ns"]:
+                stats["max_ns"] = lat
+            stats["samples"] = stats.get("samples", 0) + 1
+            return Gst.PadProbeReturn.OK
 
-        pad.add_probe(self._gst.PadProbeType.BUFFER, _count_buffer)
+        pad.add_probe(Gst.PadProbeType.BUFFER, _on_buffer)
 
     def _queue_levels(self) -> dict[str, dict[str, int]]:
         if self._pipeline is None:

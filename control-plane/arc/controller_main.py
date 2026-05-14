@@ -336,6 +336,12 @@ async def run(
 
     def _tick(now: float) -> None:
         controller.tick(now)
+        drain_bus = getattr(pipeline, "drain_bus", None)
+        if drain_bus is not None:
+            try:
+                drain_bus()
+            except PipelineError:
+                log.exception("video pipeline reported an error")
         try:
             source_switcher.reconcile(now=now)
         except PipelineError:

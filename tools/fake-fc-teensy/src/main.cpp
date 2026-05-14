@@ -760,21 +760,18 @@ static void pump_link() {
     uint8_t b = (uint8_t)c;
     if (b == 0x00) {
       if (g_rx_len == 0) continue;  // resync byte / empty frame
+      // arc_cobs_decode requires the trailing 0x00 delimiter in its input.
+      if (g_rx_len >= RX_BUF_SIZE) { g_rx_len = 0; continue; }
+      g_rx_buf[g_rx_len++] = 0x00;
       uint8_t decoded[ARC_MAX_FRAME_SIZE];
       int n = arc_cobs_decode(g_rx_buf, g_rx_len, decoded, sizeof(decoded));
+      g_rx_len = 0;
       if (n < 0) {
-        Serial.print(F("RX (cobs err ")); Serial.print(n);
-        Serial.print(F(") raw[")); Serial.print(g_rx_len); Serial.print(F("]:"));
-        for (size_t i = 0; i < g_rx_len; ++i) {
-          Serial.print(' ');
-          if (g_rx_buf[i] < 0x10) Serial.print('0');
-          Serial.print(g_rx_buf[i], HEX);
+        if (g_listen_mode) {
+          Serial.print(F("RX (cobs err ")); Serial.print(n); Serial.println(')');
         }
-        Serial.println();
-        g_rx_len = 0;
         continue;
       }
-      g_rx_len = 0;
       handle_decoded_frame(decoded, n);
     } else {
       if (g_rx_len < RX_BUF_SIZE) {

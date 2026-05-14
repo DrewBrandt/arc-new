@@ -196,6 +196,7 @@ class ControllerPipeline:
         self._compositor: Any = None
         self._textoverlay: Any = None
         self._selectors: list[Any] = []
+        self._bus: Any = None
         self._gst: Any = None
         self._current_layout: str | None = None
         self._overlay_text: str = self.callsign
@@ -217,6 +218,7 @@ class ControllerPipeline:
             self._pipeline = Gst.parse_launch(pipeline_str)
         except Exception as exc:
             raise PipelineError(f"parse_launch failed: {exc}") from exc
+        self._bus = self._pipeline.get_bus()
 
         self._compositor = self._pipeline.get_by_name("comp")
         self._textoverlay = self._pipeline.get_by_name("overlay")
@@ -256,6 +258,7 @@ class ControllerPipeline:
         self._compositor = None
         self._textoverlay = None
         self._selectors = []
+        self._bus = None
 
     def set_layout(self, name: str) -> None:
         """Switch to a named layout. Safe to call from asyncio."""
@@ -323,6 +326,30 @@ class ControllerPipeline:
     @property
     def slot_sources(self) -> tuple[SourceProps, ...]:
         return tuple(self._slot_sources)
+
+    def drain_bus(self) -> None:
+        """Drain pending Gst bus messages when running without a GLib loop."""
+
+        if self._bus is None or self._gst is None:
+            return
+        message_type = self._gst.MessageType
+        while True:
+            message = self._bus.pop()
+            if message is None:
+                return
+            if message.type == message_type.ERROR:
+                err, debug = message.parse_error()
+                raise PipelineError(
+                    f"GStreamer error from {message.src.get_name()}: {err}; {debug}"
+                )
+            if message.type == message_type.WARNING:
+                warning, debug = message.parse_warning()
+                log.warning(
+                    "GStreamer warning from %s: %s; %s",
+                    message.src.get_name(),
+                    warning,
+                    debug,
+                )
 
     # --- testable internals ---------------------------------------------
 

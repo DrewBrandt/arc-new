@@ -89,8 +89,20 @@ class FakeGstPipeline:
         self.states.append(state)
         return FakeGst.StateChangeReturn.SUCCESS
 
+    def get_bus(self):
+        return FakeBus()
+
+
+class FakeBus:
+    def pop(self):
+        return None
+
 
 class FakeGst:
+    class MessageType:
+        ERROR = "ERROR"
+        WARNING = "WARNING"
+
     class State:
         PLAYING = "PLAYING"
         NULL = "NULL"

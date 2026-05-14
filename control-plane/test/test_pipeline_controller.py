@@ -249,6 +249,10 @@ class ControllerPipelineTests(unittest.TestCase):
     def test_pipeline_description_contains_required_elements(self):
         pipe = ControllerPipeline(_config())
         desc = pipe.build_pipeline_description()
+        low_latency_queue = (
+            "queue max-size-buffers=2 max-size-bytes=0 "
+            "max-size-time=0 leaky=downstream"
+        )
         self.assertIn("compositor name=comp", desc)
         self.assertIn("textoverlay name=overlay", desc)
         self.assertIn("KD3BBP", desc)  # callsign burned in
@@ -257,10 +261,8 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertIn("comp.sink_1", desc)
         self.assertIn("comp.sink_2", desc)
         self.assertIn("libcamerasrc", desc)  # default slot 0 source
-        self.assertIn(
-            "queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream",
-            desc,
-        )
+        self.assertIn(low_latency_queue, desc)
+        self.assertIn(f"halignment=right ! {low_latency_queue} ! kmssink", desc)
         self.assertIn("format=I420", desc)
         self.assertIn("video/x-raw,width=720,height=480", desc)
 
@@ -428,7 +430,7 @@ class ControllerPipelineTests(unittest.TestCase):
         desc = pipe.build_pipeline_description()
         # Mixer element swapped, with gldownload + videoconvert before textoverlay.
         self.assertIn(
-            "glvideomixer name=comp ! video/x-raw(memory:GLMemory),width=720,height=480"
+            "glvideomixer name=comp ! video/x-raw(memory:GLMemory),width=720,height=480,framerate=30/1"
             " ! gldownload ! videoconvert",
             desc,
         )

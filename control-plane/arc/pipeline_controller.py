@@ -91,12 +91,16 @@ _BLACK_SOURCE = (
 )
 _BACKGROUND_SOURCE = (
     "videotestsrc pattern=black is-live=true"
-    " ! video/x-raw,width=720,height=480,framerate=30000/1001"
+    " ! video/x-raw,width=720,height=480,framerate=30/1"
     " ! videoconvert"
     f" ! {_LOW_LATENCY_QUEUE}"
 )
-_OUTPUT_CAPS = "video/x-raw,width=720,height=480"
-_GL_OUTPUT_CAPS = "video/x-raw(memory:GLMemory),width=720,height=480"
+# Cap the compositor output rate so its PTS is locked to a 30fps grid on
+# the pipeline clock. Without this, mismatched input cap rates leak into
+# compositor PTS calculation and the output drifts behind wall time by
+# ~1ms/sec, producing slowly-growing latency over minutes.
+_OUTPUT_CAPS = "video/x-raw,width=720,height=480,framerate=30/1"
+_GL_OUTPUT_CAPS = "video/x-raw(memory:GLMemory),width=720,height=480,framerate=30/1"
 
 
 @dataclass(frozen=True)
@@ -444,6 +448,7 @@ class ControllerPipeline:
             f"{mixer_chain}"
             f" ! textoverlay name=overlay text=\"{callsign}\""
             f" font-desc=\"Sans 18\" valignment=top halignment=right"
+            f" ! {_LOW_LATENCY_QUEUE}"
             f" ! {self.sink_factory}"
             f" {_BACKGROUND_SOURCE}{slot_tail} ! comp.sink_0"
             f" {self._slot_sources[0].description}{slot_tail} ! comp.sink_1"
@@ -469,6 +474,7 @@ class ControllerPipeline:
             f"{mixer_chain}"
             f" ! textoverlay name=overlay text=\"{callsign}\""
             f" font-desc=\"Sans 18\" valignment=top halignment=right"
+            f" ! {_LOW_LATENCY_QUEUE}"
             f" ! {self.sink_factory}"
             f" {_BACKGROUND_SOURCE}{slot_tail} ! comp.sink_0"
             f"{slot_branches}"

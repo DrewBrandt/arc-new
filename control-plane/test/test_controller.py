@@ -177,6 +177,31 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(controller.unhandled_frames, [])
         self.assertTrue(controller.health.is_online(p.ADDR_SENDER_C))
 
+    def test_daemon_mode_does_not_retain_delivered_frame_history(self):
+        controller = Controller(
+            sender_addrs=(p.ADDR_SENDER_C,),
+            retain_local_history=False,
+        )
+        report = m.StatusReport(0x03, 50, 20, 1024, -60, 10, 0)
+
+        for seq in range(3):
+            controller.receive(
+                p.Frame(
+                    src=p.ADDR_SENDER_C,
+                    dst=p.ADDR_CONTROLLER,
+                    flags=0,
+                    session=1,
+                    seq=seq,
+                    family=p.FAMILY_VIDEO,
+                    type=m.VideoType.STATUS_REPORT,
+                    payload=report.encode(),
+                ),
+                now=float(seq),
+            )
+
+        self.assertEqual(controller.node.inbox, [])
+        self.assertEqual(controller.sender(p.ADDR_SENDER_C).last_status.report, report)
+
 
 if __name__ == "__main__":
     unittest.main()

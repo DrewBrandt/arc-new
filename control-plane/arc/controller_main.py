@@ -383,6 +383,7 @@ async def run(
         sender_addrs=tuple(s.addr for s in cfg.senders),
         heartbeat_interval_s=cfg.heartbeat_interval_s,
         peer_timeout_s=cfg.peer_timeout_s,
+        retain_local_history=False,
     )
     source_switcher = SourceSwitcher(
         controller,

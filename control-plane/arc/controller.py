@@ -40,6 +40,7 @@ class Controller:
         heartbeat_interval_s: float = 1.0,
         peer_timeout_s: float = 3.0,
         fc_video_handler: FcVideoHandler | None = None,
+        retain_local_history: bool = True,
     ) -> None:
         self.node = Node(
             addr=protocol.ADDR_CONTROLLER,
@@ -66,6 +67,7 @@ class Controller:
         )
         self.unhandled_frames: list[protocol.Frame] = []
         self.fc_video_handler = fc_video_handler
+        self.retain_local_history = retain_local_history
 
     def set_links(self, links: Mapping[str, Link]) -> None:
         self.node.set_links(links)
@@ -78,6 +80,8 @@ class Controller:
         self.node.receive(frame)
         for delivered in self.node.inbox[before:]:
             self._handle_local_frame(delivered, now=now)
+        if not self.retain_local_history:
+            self.node.inbox.clear()
 
     def tick(self, now: float) -> list[int]:
         """Advance reliability + heartbeat. Returns peers that just went offline."""

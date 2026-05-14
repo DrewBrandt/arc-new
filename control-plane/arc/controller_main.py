@@ -24,8 +24,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import signal
+import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from arc import messages, protocol
@@ -54,6 +57,7 @@ from arc.source_switcher import (
 
 
 log = logging.getLogger("arc.controller")
+TELEMETRY_INTERVAL_S = 5.0
 
 
 __all__ = [
@@ -69,6 +73,136 @@ __all__ = [
     "main",
     "run",
 ]
+
+
+@dataclass
+class _TelemetrySample:
+    now: float
+    process_time_s: float
+    rss_kb: int | None
+    temp_c: float | None
+    load1: float | None
+
+
+class _ControllerTelemetry:
+    """Periodic low-overhead diagnostics for the running Controller daemon."""
+
+    def __init__(
+        self,
+        controller: Controller,
+        source_switcher: SourceSwitcher,
+        fc_uart: QueuedUartLink,
+        tcp_links_by_route: dict[str, QueuedTcpLink],
+        *,
+        interval_s: float = TELEMETRY_INTERVAL_S,
+    ) -> None:
+        self.controller = controller
+        self.source_switcher = source_switcher
+        self.fc_uart = fc_uart
+        self.tcp_links_by_route = tcp_links_by_route
+        self.interval_s = interval_s
+        self._next_report_at: float | None = None
+        self._last_tick_at: float | None = None
+        self._max_tick_gap_s = 0.0
+        self._last_sample: _TelemetrySample | None = None
+
+    def observe_tick(self, now: float) -> None:
+        if self._last_tick_at is not None:
+            self._max_tick_gap_s = max(self._max_tick_gap_s, now - self._last_tick_at)
+        self._last_tick_at = now
+
+    def maybe_log(self, now: float) -> None:
+        if self._next_report_at is None:
+            self._next_report_at = now + self.interval_s
+            self._last_sample = self._sample(now)
+            return
+        if now < self._next_report_at:
+            return
+
+        sample = self._sample(now)
+        cpu_pct = self._cpu_pct(sample)
+        rss = f"{sample.rss_kb}kB" if sample.rss_kb is not None else "n/a"
+        temp = f"{sample.temp_c:.1f}C" if sample.temp_c is not None else "n/a"
+        load1 = f"{sample.load1:.2f}" if sample.load1 is not None else "n/a"
+        tcp = " ".join(
+            f"{name}:online={int(link.online)},q={link.queue.qsize()},drop={link.dropped}"
+            for name, link in sorted(self.tcp_links_by_route.items())
+        )
+        log.info(
+            "telemetry cpu=%.1f%% rss=%s temp=%s load1=%s tick_gap=%.1fms "
+            "pending=%d inbox=%d failed=%d unhandled=%d uart_online=%d "
+            "uart_q=%d uart_drop=%d uart_bad=%d desired=%s active=%s tcp=[%s]",
+            cpu_pct,
+            rss,
+            temp,
+            load1,
+            self._max_tick_gap_s * 1000.0,
+            self.controller.node.reliable.pending_count,
+            len(self.controller.node.inbox),
+            len(self.controller.node.failed),
+            len(self.controller.unhandled_frames),
+            int(self.fc_uart.online),
+            self.fc_uart.queue.qsize(),
+            self.fc_uart.dropped,
+            self.fc_uart.bad_frames,
+            _format_sources(self.source_switcher.sources),
+            _format_sources(self.source_switcher.active_sources),
+            tcp,
+        )
+        self._last_sample = sample
+        self._max_tick_gap_s = 0.0
+        self._next_report_at = now + self.interval_s
+
+    def _sample(self, now: float) -> _TelemetrySample:
+        return _TelemetrySample(
+            now=now,
+            process_time_s=time.process_time(),
+            rss_kb=_read_rss_kb(),
+            temp_c=_read_cpu_temp_c(),
+            load1=_read_load1(),
+        )
+
+    def _cpu_pct(self, sample: _TelemetrySample) -> float:
+        if self._last_sample is None:
+            return 0.0
+        elapsed = max(sample.now - self._last_sample.now, 1e-6)
+        cpu_elapsed = sample.process_time_s - self._last_sample.process_time_s
+        return max(0.0, (cpu_elapsed / elapsed) * 100.0)
+
+
+def _format_sources(sources) -> str:
+    return ",".join(f"0x{source:02x}" for source in sources)
+
+
+def _read_rss_kb() -> int | None:
+    try:
+        with open("/proc/self/status", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1])
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _read_cpu_temp_c() -> float | None:
+    for path in (
+        "/sys/class/thermal/thermal_zone0/temp",
+        "/sys/class/hwmon/hwmon0/temp1_input",
+    ):
+        try:
+            raw = Path(path).read_text(encoding="utf-8").strip()
+            return int(raw) / 1000.0
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def _read_load1() -> float | None:
+    try:
+        return os.getloadavg()[0]
+    except (AttributeError, OSError):
+        return None
 
 
 def build_fc_video_status_report(
@@ -296,6 +430,12 @@ async def run(
         s.addr: tcp_links_by_route[_sender_route_name(s.addr)] for s in cfg.senders
     }
     controller.set_links({"uart-fc-n": fc_uart, **tcp_links_by_route})
+    telemetry = _ControllerTelemetry(
+        controller,
+        source_switcher,
+        fc_uart,
+        tcp_links_by_route,
+    )
 
     # Map Sender source IPs to their TCP links so the TCP server can attach.
     ip_to_link = {
@@ -335,6 +475,7 @@ async def run(
         _install_signal_handlers(_on_stop_signal)
 
     def _tick(now: float) -> None:
+        telemetry.observe_tick(now)
         controller.tick(now)
         drain_bus = getattr(pipeline, "drain_bus", None)
         if drain_bus is not None:
@@ -346,6 +487,7 @@ async def run(
             source_switcher.reconcile(now=now)
         except PipelineError:
             log.exception("video pipeline failed while reconciling sources")
+        telemetry.maybe_log(now)
 
     tasks = [
         asyncio.create_task(

@@ -200,7 +200,10 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertIn("comp.sink_1", desc)
         self.assertIn("comp.sink_2", desc)
         self.assertIn("libcamerasrc", desc)  # default slot 0 source
-        self.assertIn("queue max-size-buffers=2 leaky=downstream", desc)
+        self.assertIn(
+            "queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream",
+            desc,
+        )
         self.assertIn("format=I420", desc)
         self.assertIn("video/x-raw,width=720,height=480", desc)
 
@@ -270,10 +273,22 @@ class ControllerPipelineTests(unittest.TestCase):
         desc = pipe.build_pipeline_description()
         self.assertIn("udpsrc port=5012", desc)
         self.assertIn("clock-rate=90000", desc)
-        self.assertIn("rtpjitterbuffer latency=100 drop-on-latency=true", desc)
+        self.assertIn("rtpjitterbuffer latency=40 drop-on-latency=true", desc)
         self.assertIn("rtph264depay", desc)
         self.assertIn("avdec_h264", desc)
         self.assertIn("video/x-raw,format=I420", desc)
+
+    def test_remote_sender_receive_path_drops_stale_compressed_and_raw_frames(self):
+        pipe = ControllerPipeline(_config())
+        pipe.set_source(1, protocol.ADDR_SENDER_C)
+        desc = pipe.build_pipeline_description()
+        low_latency_queue = (
+            "queue max-size-buffers=2 max-size-bytes=0 "
+            "max-size-time=0 leaky=downstream"
+        )
+
+        self.assertIn(f"h264parse ! {low_latency_queue} ! avdec_h264", desc)
+        self.assertIn(f"video/x-raw,format=I420 ! {low_latency_queue}", desc)
 
     def test_set_source_empty_and_local_sources(self):
         pipe = ControllerPipeline(_config())

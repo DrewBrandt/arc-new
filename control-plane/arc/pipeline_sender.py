@@ -52,6 +52,9 @@ __all__ = ["I_FRAME_PERIOD", "PipelineError", "SenderPipeline"]
 
 
 I_FRAME_PERIOD = 10  # one keyframe every 10 frames (~333 ms at 30 fps).
+_BRANCH_QUEUE = (
+    "queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream"
+)
 
 
 class SenderPipeline:
@@ -196,11 +199,11 @@ class SenderPipeline:
             f" ! video/x-h264,profile=baseline"
             f" ! h264parse config-interval=1"
             f" ! tee name=t"
-            f" t. ! queue ! valve name=tx_valve drop=true"
+            f" t. ! {_BRANCH_QUEUE} ! valve name=tx_valve drop=true"
             f" ! rtph264pay pt=96 config-interval=1"
             f" ! udpsink host={self.controller_ip} port={self.controller_port}"
             f" sync=false"
-            f" t. ! queue ! valve name=rec_valve drop=true"
+            f" t. ! {_BRANCH_QUEUE} ! valve name=rec_valve drop=true"
             f" ! mp4mux"
             f" ! filesink location={rec_path}"
         )

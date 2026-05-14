@@ -74,6 +74,17 @@ class PipelineDescriptionTests(unittest.TestCase):
         ]:
             self.assertIn(needed, desc, f"missing {needed!r} in pipeline:\n{desc}")
 
+    def test_branch_queues_are_bounded_and_leaky(self):
+        pipe = SenderPipeline(_config(), clock=_fixed_clock())
+        desc = pipe.build_pipeline_description()
+        branch_queue = (
+            "queue max-size-buffers=2 max-size-bytes=0 "
+            "max-size-time=0 leaky=downstream"
+        )
+        self.assertEqual(desc.count(branch_queue), 2)
+        self.assertIn(f"t. ! {branch_queue} ! valve name=tx_valve", desc)
+        self.assertIn(f"t. ! {branch_queue} ! valve name=rec_valve", desc)
+
     def test_i_frame_period_pinned_to_design_doc_value(self):
         # Design doc §7.5: "Senders use I-frame period of 10".
         pipe = SenderPipeline(_config(), clock=_fixed_clock())

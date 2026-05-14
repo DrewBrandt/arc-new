@@ -53,21 +53,27 @@ _EMPTY_SOURCE = protocol.ADDR_UNASSIGNED
 _LOCAL_SOURCE = protocol.ADDR_CONTROLLER
 _SUPPORTED_MIXERS = ("compositor", "glvideomixer")
 _SUPPORTED_SWITCH_MODES = ("rebuild", "selector")
+_LOW_LATENCY_QUEUE = (
+    "queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream"
+)
+_RTP_JITTER_LATENCY_MS = 40
 _DEFAULT_LOCAL_CAMERA = (
     "libcamerasrc ! videoconvert"
     " ! video/x-raw,width=640,height=480,format=I420,framerate=30/1"
-    " ! queue max-size-buffers=2 leaky=downstream"
+    f" ! {_LOW_LATENCY_QUEUE}"
 )
 _BLACK_SOURCE = (
     "videotestsrc pattern=black is-live=true"
     " ! video/x-raw,width=640,height=480,framerate=30/1"
     " ! videoconvert"
     " ! video/x-raw,format=I420"
+    f" ! {_LOW_LATENCY_QUEUE}"
 )
 _BACKGROUND_SOURCE = (
     "videotestsrc pattern=black is-live=true"
     " ! video/x-raw,width=720,height=480,framerate=30000/1001"
     " ! videoconvert"
+    f" ! {_LOW_LATENCY_QUEUE}"
 )
 _OUTPUT_CAPS = "video/x-raw,width=720,height=480"
 _GL_OUTPUT_CAPS = "video/x-raw(memory:GLMemory),width=720,height=480"
@@ -357,8 +363,8 @@ class ControllerPipeline:
     def _build_selector_pipeline_description(self, mixer_chain: str, slot_tail: str) -> str:
         callsign = self.callsign.replace('"', '')
         slot_branches = (
-            f" input-selector name=slot0_selector sync-streams=false ! queue max-size-buffers=2 leaky=downstream{slot_tail} ! comp.sink_1"
-            f" input-selector name=slot1_selector sync-streams=false ! queue max-size-buffers=2 leaky=downstream{slot_tail} ! comp.sink_2"
+            f" input-selector name=slot0_selector sync-streams=false ! {_LOW_LATENCY_QUEUE}{slot_tail} ! comp.sink_1"
+            f" input-selector name=slot1_selector sync-streams=false ! {_LOW_LATENCY_QUEUE}{slot_tail} ! comp.sink_2"
         )
         source_branches = []
         for idx, source_addr in enumerate(self._selector_sources):
@@ -366,8 +372,8 @@ class ControllerPipeline:
             tee_name = f"source_{source_addr:02x}_tee"
             source_branches.append(
                 f" {source.description} ! tee name={tee_name}"
-                f" {tee_name}. ! queue max-size-buffers=2 leaky=downstream ! slot0_selector.sink_{idx}"
-                f" {tee_name}. ! queue max-size-buffers=2 leaky=downstream ! slot1_selector.sink_{idx}"
+                f" {tee_name}. ! {_LOW_LATENCY_QUEUE} ! slot0_selector.sink_{idx}"
+                f" {tee_name}. ! {_LOW_LATENCY_QUEUE} ! slot1_selector.sink_{idx}"
             )
         return (
             f"{mixer_chain}"
@@ -468,13 +474,14 @@ def _remote_sender_source(port: int) -> str:
     return (
         f"udpsrc port={port}"
         " caps=\"application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000\""
-        " ! rtpjitterbuffer latency=100 drop-on-latency=true"
+        f" ! rtpjitterbuffer latency={_RTP_JITTER_LATENCY_MS} drop-on-latency=true"
         " ! rtph264depay"
         " ! h264parse"
+        f" ! {_LOW_LATENCY_QUEUE}"
         " ! avdec_h264"
         " ! videoconvert"
         " ! video/x-raw,format=I420"
-        " ! queue max-size-buffers=2 leaky=downstream"
+        f" ! {_LOW_LATENCY_QUEUE}"
     )
 
 

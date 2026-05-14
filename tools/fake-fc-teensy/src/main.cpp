@@ -762,13 +762,19 @@ static void pump_link() {
       if (g_rx_len == 0) continue;  // resync byte / empty frame
       uint8_t decoded[ARC_MAX_FRAME_SIZE];
       int n = arc_cobs_decode(g_rx_buf, g_rx_len, decoded, sizeof(decoded));
-      g_rx_len = 0;
       if (n < 0) {
-        if (g_listen_mode) {
-          Serial.print(F("RX (cobs err ")); Serial.print(n); Serial.println(')');
+        Serial.print(F("RX (cobs err ")); Serial.print(n);
+        Serial.print(F(") raw[")); Serial.print(g_rx_len); Serial.print(F("]:"));
+        for (size_t i = 0; i < g_rx_len; ++i) {
+          Serial.print(' ');
+          if (g_rx_buf[i] < 0x10) Serial.print('0');
+          Serial.print(g_rx_buf[i], HEX);
         }
+        Serial.println();
+        g_rx_len = 0;
         continue;
       }
+      g_rx_len = 0;
       handle_decoded_frame(decoded, n);
     } else {
       if (g_rx_len < RX_BUF_SIZE) {

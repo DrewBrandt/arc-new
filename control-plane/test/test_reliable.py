@@ -23,7 +23,7 @@ class ReliableEndpointTests(unittest.TestCase):
         endpoint, sent, delivered, failed = self.endpoint()
 
         frame = endpoint.send(
-            dst=p.ADDR_SENDER_C,
+            dst=p.ADDR_SENDER_AIRBRAKE,
             family=p.FAMILY_VIDEO,
             type=0x10,
             payload=b"status",
@@ -41,7 +41,7 @@ class ReliableEndpointTests(unittest.TestCase):
         endpoint, sent, delivered, failed = self.endpoint(first_seq=100)
 
         frame = endpoint.send(
-            dst=p.ADDR_SENDER_C,
+            dst=p.ADDR_SENDER_AIRBRAKE,
             family=p.FAMILY_VIDEO,
             type=0x01,
             reliable=True,
@@ -52,7 +52,7 @@ class ReliableEndpointTests(unittest.TestCase):
         self.assertTrue(frame.flags & p.FLAG_RELIABLE)
 
         ack = p.Frame(
-            src=p.ADDR_SENDER_C,
+            src=p.ADDR_SENDER_AIRBRAKE,
             dst=p.ADDR_CONTROLLER,
             flags=p.FLAG_ACK,
             session=2,
@@ -72,7 +72,7 @@ class ReliableEndpointTests(unittest.TestCase):
     def test_timeout_retransmits_then_failure_after_retries(self):
         endpoint, sent, delivered, failed = self.endpoint(timeout_s=1.0, max_retries=2)
         frame = endpoint.send(
-            dst=p.ADDR_SENDER_C,
+            dst=p.ADDR_SENDER_AIRBRAKE,
             family=p.FAMILY_VIDEO,
             type=0x01,
             reliable=True,
@@ -184,7 +184,7 @@ class ReliableEndpointTests(unittest.TestCase):
         endpoint, sent, delivered, failed = self.endpoint()
         incoming = p.Frame(
             src=p.ADDR_FC_C,
-            dst=p.ADDR_SENDER_C,
+            dst=p.ADDR_SENDER_AIRBRAKE,
             flags=p.FLAG_RELIABLE,
             session=3,
             seq=1,

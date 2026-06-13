@@ -20,12 +20,12 @@ class NodeFlowTests(unittest.TestCase):
         fc_c = Node(
             addr=p.ADDR_FC_C,
             routes={},
-            default_route="sender-c",
+            default_route="airbrake",
             session=3,
             first_seq=100,
         )
-        sender_c = Node(
-            addr=p.ADDR_SENDER_C,
+        sender_airbrake = Node(
+            addr=p.ADDR_SENDER_AIRBRAKE,
             routes=sender_routes(p.ADDR_FC_C),
             default_route="controller",
             session=4,
@@ -44,32 +44,32 @@ class NodeFlowTests(unittest.TestCase):
         )
 
         links = {
-            "fc-c->sender-c": DirectLink(sender_c),
-            "sender-c->fc-c": DirectLink(fc_c),
-            "sender-c->controller": DirectLink(controller),
-            "controller->sender-c": DirectLink(sender_c),
+            "fc-c->airbrake": DirectLink(sender_airbrake),
+            "airbrake->fc-c": DirectLink(fc_c),
+            "airbrake->controller": DirectLink(controller),
+            "controller->airbrake": DirectLink(sender_airbrake),
             "controller->fc-n": DirectLink(fc_n),
             "fc-n->controller": DirectLink(controller),
         }
 
-        fc_c.set_links({"sender-c": links["fc-c->sender-c"]})
-        sender_c.set_links(
+        fc_c.set_links({"airbrake": links["fc-c->airbrake"]})
+        sender_airbrake.set_links(
             {
-                "uart-fc": links["sender-c->fc-c"],
-                "controller": links["sender-c->controller"],
+                "uart-fc": links["airbrake->fc-c"],
+                "controller": links["airbrake->controller"],
             }
         )
         controller.set_links(
             {
-                "sender-c": links["controller->sender-c"],
+                "airbrake": links["controller->airbrake"],
                 "uart-fc-n": links["controller->fc-n"],
             }
         )
         fc_n.set_links({"controller": links["fc-n->controller"]})
-        return fc_c, sender_c, controller, fc_n, links
+        return fc_c, sender_airbrake, controller, fc_n, links
 
     def test_reliable_frame_routes_to_fc_n_and_ack_returns_to_fc_c(self):
-        fc_c, sender_c, controller, fc_n, links = self.build_fc_c_to_fc_n_topology()
+        fc_c, sender_airbrake, controller, fc_n, links = self.build_fc_c_to_fc_n_topology()
 
         sent = fc_c.send_local(
             dst=p.ADDR_FC_N,
@@ -82,12 +82,12 @@ class NodeFlowTests(unittest.TestCase):
 
         self.assertEqual(fc_n.inbox, [sent])
         self.assertEqual(fc_c.reliable.pending_count, 0)
-        self.assertEqual(sender_c.inbox, [])
+        self.assertEqual(sender_airbrake.inbox, [])
         self.assertEqual(controller.inbox, [])
         self.assertEqual(fc_c.failed, [])
 
-        self.assertEqual(links["fc-c->sender-c"].sent, [sent])
-        self.assertEqual(links["sender-c->controller"].sent, [sent])
+        self.assertEqual(links["fc-c->airbrake"].sent, [sent])
+        self.assertEqual(links["airbrake->controller"].sent, [sent])
         self.assertEqual(links["controller->fc-n"].sent, [sent])
 
         self.assertEqual(len(links["fc-n->controller"].sent), 1)
@@ -96,8 +96,8 @@ class NodeFlowTests(unittest.TestCase):
         self.assertEqual(ack.dst, p.ADDR_FC_C)
         self.assertEqual(ack.flags, p.FLAG_ACK)
         self.assertEqual(ack.payload, bytes((sent.seq >> 8, sent.seq & 0xFF)))
-        self.assertEqual(links["controller->sender-c"].sent, [ack])
-        self.assertEqual(links["sender-c->fc-c"].sent, [ack])
+        self.assertEqual(links["controller->airbrake"].sent, [ack])
+        self.assertEqual(links["airbrake->fc-c"].sent, [ack])
 
     def test_unreliable_frame_routes_without_ack_or_pending_state(self):
         fc_c, _sender_c, _controller, fc_n, links = self.build_fc_c_to_fc_n_topology()
@@ -119,13 +119,13 @@ class NodeFlowTests(unittest.TestCase):
         fc_c = Node(
             addr=p.ADDR_FC_C,
             routes={},
-            default_route="sender-c",
+            default_route="airbrake",
             session=3,
             timeout_s=1.0,
             max_retries=1,
         )
         drop_link = DropLink()
-        fc_c.set_links({"sender-c": drop_link})
+        fc_c.set_links({"airbrake": drop_link})
 
         sent = fc_c.send_local(
             dst=p.ADDR_FC_N,

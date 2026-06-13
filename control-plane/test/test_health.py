@@ -19,7 +19,7 @@ class HeartbeatTests(unittest.TestCase):
         sent: list[p.Frame] = []
         link = CapturingLink()
         node = Node(
-            addr=p.ADDR_SENDER_C,
+            addr=p.ADDR_SENDER_AIRBRAKE,
             routes={},
             default_route="controller",
             links={"controller": link},
@@ -37,7 +37,7 @@ class HeartbeatTests(unittest.TestCase):
     def test_respects_interval(self):
         link = CapturingLink()
         node = Node(
-            addr=p.ADDR_SENDER_C,
+            addr=p.ADDR_SENDER_AIRBRAKE,
             routes={},
             default_route="controller",
             links={"controller": link},
@@ -53,36 +53,36 @@ class HeartbeatTests(unittest.TestCase):
 
 class PeerHealthTests(unittest.TestCase):
     def test_unobserved_peer_is_offline(self):
-        health = PeerHealth(peers=[p.ADDR_SENDER_C], timeout_s=3.0)
-        self.assertFalse(health.is_online(p.ADDR_SENDER_C))
-        self.assertIsNone(health.last_seen(p.ADDR_SENDER_C))
+        health = PeerHealth(peers=[p.ADDR_SENDER_AIRBRAKE], timeout_s=3.0)
+        self.assertFalse(health.is_online(p.ADDR_SENDER_AIRBRAKE))
+        self.assertIsNone(health.last_seen(p.ADDR_SENDER_AIRBRAKE))
 
     def test_first_frame_marks_peer_online(self):
-        health = PeerHealth(peers=[p.ADDR_SENDER_C], timeout_s=3.0)
-        health.observe(_frame(p.ADDR_SENDER_C, session=1), now=10.0)
-        self.assertTrue(health.is_online(p.ADDR_SENDER_C))
-        self.assertEqual(health.last_seen(p.ADDR_SENDER_C), 10.0)
+        health = PeerHealth(peers=[p.ADDR_SENDER_AIRBRAKE], timeout_s=3.0)
+        health.observe(_frame(p.ADDR_SENDER_AIRBRAKE, session=1), now=10.0)
+        self.assertTrue(health.is_online(p.ADDR_SENDER_AIRBRAKE))
+        self.assertEqual(health.last_seen(p.ADDR_SENDER_AIRBRAKE), 10.0)
 
     def test_silence_past_timeout_marks_peer_offline(self):
-        health = PeerHealth(peers=[p.ADDR_SENDER_C], timeout_s=3.0)
-        health.observe(_frame(p.ADDR_SENDER_C, session=1), now=10.0)
+        health = PeerHealth(peers=[p.ADDR_SENDER_AIRBRAKE], timeout_s=3.0)
+        health.observe(_frame(p.ADDR_SENDER_AIRBRAKE, session=1), now=10.0)
 
         self.assertEqual(health.offline_peers(now=12.0), [])
-        self.assertEqual(health.offline_peers(now=13.0), [p.ADDR_SENDER_C])
-        self.assertFalse(health.is_online(p.ADDR_SENDER_C))
+        self.assertEqual(health.offline_peers(now=13.0), [p.ADDR_SENDER_AIRBRAKE])
+        self.assertFalse(health.is_online(p.ADDR_SENDER_AIRBRAKE))
         # Already-offline peers are not re-reported.
         self.assertEqual(health.offline_peers(now=14.0), [])
 
     def test_session_change_resets_online(self):
-        health = PeerHealth(peers=[p.ADDR_SENDER_C], timeout_s=3.0)
-        health.observe(_frame(p.ADDR_SENDER_C, session=1), now=10.0)
-        health.observe(_frame(p.ADDR_SENDER_C, session=2), now=10.5)
-        self.assertTrue(health.is_online(p.ADDR_SENDER_C))
+        health = PeerHealth(peers=[p.ADDR_SENDER_AIRBRAKE], timeout_s=3.0)
+        health.observe(_frame(p.ADDR_SENDER_AIRBRAKE, session=1), now=10.0)
+        health.observe(_frame(p.ADDR_SENDER_AIRBRAKE, session=2), now=10.5)
+        self.assertTrue(health.is_online(p.ADDR_SENDER_AIRBRAKE))
 
     def test_unknown_peer_observation_is_ignored(self):
-        health = PeerHealth(peers=[p.ADDR_SENDER_C], timeout_s=3.0)
-        health.observe(_frame(p.ADDR_SENDER_L1, session=1), now=10.0)
-        self.assertFalse(health.is_online(p.ADDR_SENDER_L1))
+        health = PeerHealth(peers=[p.ADDR_SENDER_AIRBRAKE], timeout_s=3.0)
+        health.observe(_frame(p.ADDR_SENDER_PAYLOAD, session=1), now=10.0)
+        self.assertFalse(health.is_online(p.ADDR_SENDER_PAYLOAD))
 
 
 def _frame(src: int, session: int = 1) -> p.Frame:

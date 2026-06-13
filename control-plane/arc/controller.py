@@ -26,10 +26,9 @@ class Controller:
         self,
         links: Mapping[str, Link] | None = None,
         sender_addrs: tuple[int, ...] = (
-            protocol.ADDR_SENDER_N,
-            protocol.ADDR_SENDER_C,
-            protocol.ADDR_SENDER_L1,
-            protocol.ADDR_SENDER_L2,
+            protocol.ADDR_SENDER_DOWN,
+            protocol.ADDR_SENDER_AIRBRAKE,
+            protocol.ADDR_SENDER_PAYLOAD,
             protocol.ADDR_SENDER_GROUND,
         ),
         session: int = 1,

@@ -32,8 +32,8 @@ def _config(
         listen_port=6000,
         senders=(
             SenderEntry(
-                addr=protocol.ADDR_SENDER_C,
-                name="sender-c",
+                addr=protocol.ADDR_SENDER_AIRBRAKE,
+                name="airbrake",
                 ip="10.42.0.12",
                 paired_fc=protocol.ADDR_FC_C,
             ),
@@ -326,9 +326,9 @@ class ControllerPipelineTests(unittest.TestCase):
 
     def test_set_source_records_remote_sender_source(self):
         pipe = ControllerPipeline(_config())
-        pipe.set_source(1, protocol.ADDR_SENDER_C)
+        pipe.set_source(1, protocol.ADDR_SENDER_AIRBRAKE)
 
-        self.assertEqual(pipe.slot_sources[1].addr, protocol.ADDR_SENDER_C)
+        self.assertEqual(pipe.slot_sources[1].addr, protocol.ADDR_SENDER_AIRBRAKE)
         desc = pipe.build_pipeline_description()
         self.assertIn("udpsrc port=5012", desc)
         self.assertIn("clock-rate=90000", desc)
@@ -339,7 +339,7 @@ class ControllerPipelineTests(unittest.TestCase):
 
     def test_remote_sender_receive_path_drops_stale_compressed_and_raw_frames(self):
         pipe = ControllerPipeline(_config())
-        pipe.set_source(1, protocol.ADDR_SENDER_C)
+        pipe.set_source(1, protocol.ADDR_SENDER_AIRBRAKE)
         desc = pipe.build_pipeline_description()
         low_latency_queue = (
             "queue max-size-buffers=2 max-size-bytes=0 "
@@ -351,7 +351,7 @@ class ControllerPipelineTests(unittest.TestCase):
 
     def test_set_source_empty_and_local_sources(self):
         pipe = ControllerPipeline(_config())
-        pipe.set_source(1, protocol.ADDR_SENDER_C)
+        pipe.set_source(1, protocol.ADDR_SENDER_AIRBRAKE)
         pipe.set_source(1, protocol.ADDR_UNASSIGNED)
         pipe.set_source(0, protocol.ADDR_CONTROLLER)
 
@@ -364,9 +364,9 @@ class ControllerPipelineTests(unittest.TestCase):
     def test_set_source_rejects_unknown_sender_and_bad_slot(self):
         pipe = ControllerPipeline(_config())
         with self.assertRaises(PipelineError):
-            pipe.set_source(1, protocol.ADDR_SENDER_L1)
+            pipe.set_source(1, protocol.ADDR_SENDER_PAYLOAD)
         with self.assertRaises(PipelineError):
-            pipe.set_source(3, protocol.ADDR_SENDER_C)
+            pipe.set_source(3, protocol.ADDR_SENDER_AIRBRAKE)
 
     def test_rebuild_mode_rejects_local_camera_in_both_slots(self):
         pipe = ControllerPipeline(_config(), switch_mode="rebuild")
@@ -377,11 +377,11 @@ class ControllerPipelineTests(unittest.TestCase):
     def test_set_sources_records_multiple_sources(self):
         pipe = ControllerPipeline(_config())
         pipe.set_sources({
-            0: protocol.ADDR_SENDER_C,
+            0: protocol.ADDR_SENDER_AIRBRAKE,
             1: protocol.ADDR_CONTROLLER,
         })
 
-        self.assertEqual(pipe.slot_sources[0].addr, protocol.ADDR_SENDER_C)
+        self.assertEqual(pipe.slot_sources[0].addr, protocol.ADDR_SENDER_AIRBRAKE)
         self.assertEqual(pipe.slot_sources[1].addr, protocol.ADDR_CONTROLLER)
         desc = pipe.build_pipeline_description()
         self.assertIn("udpsrc port=5012", desc)
@@ -410,7 +410,7 @@ class ControllerPipelineTests(unittest.TestCase):
         pipe = ControllerPipeline(
             _config(video=ControllerVideoConfig(local_camera_rotation=180))
         )
-        pipe.set_source(1, protocol.ADDR_SENDER_C)
+        pipe.set_source(1, protocol.ADDR_SENDER_AIRBRAKE)
         desc = pipe.build_pipeline_description()
         # Exactly one videoflip in the graph (the local-camera branch), not
         # one per Sender source.
@@ -476,7 +476,7 @@ class ControllerPipelineTests(unittest.TestCase):
             pipe.set_overlay("KD3BBP / BOOST")
             pipe.set_layout("split")
             pipe.start()
-            pipe.set_source(1, protocol.ADDR_SENDER_C)
+            pipe.set_source(1, protocol.ADDR_SENDER_AIRBRAKE)
         finally:
             pc._import_gstreamer = original
 
@@ -504,7 +504,7 @@ class ControllerPipelineTests(unittest.TestCase):
             pipe = ControllerPipeline(_config(), switch_mode="rebuild")
             pipe.start()
             pipe.set_sources({
-                0: protocol.ADDR_SENDER_C,
+                0: protocol.ADDR_SENDER_AIRBRAKE,
                 1: protocol.ADDR_CONTROLLER,
             })
         finally:
@@ -513,7 +513,7 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertEqual(len(FakeGst.launched), 2)
         self.assertEqual(FakeGst.pipelines[0].states, ["PLAYING", "NULL"])
         self.assertEqual(FakeGst.pipelines[1].states, ["PLAYING"])
-        self.assertEqual(pipe.slot_sources[0].addr, protocol.ADDR_SENDER_C)
+        self.assertEqual(pipe.slot_sources[0].addr, protocol.ADDR_SENDER_AIRBRAKE)
         self.assertEqual(pipe.slot_sources[1].addr, protocol.ADDR_CONTROLLER)
 
     def test_selector_switch_mode_changes_active_pads_without_rebuild(self):
@@ -527,7 +527,7 @@ class ControllerPipelineTests(unittest.TestCase):
             pipe = ControllerPipeline(_config(), switch_mode="selector")
             pipe.start()
             pipe.set_sources({
-                0: protocol.ADDR_SENDER_C,
+                0: protocol.ADDR_SENDER_AIRBRAKE,
                 1: protocol.ADDR_CONTROLLER,
             })
         finally:

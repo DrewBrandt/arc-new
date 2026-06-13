@@ -21,7 +21,7 @@ from arc.pipeline_sender import (
 
 def _config(
     addr: int = 0x12,
-    name: str = "sender-c",
+    name: str = "airbrake",
     width: int = 640,
     height: int = 480,
     framerate: int = 30,
@@ -100,7 +100,7 @@ class PipelineDescriptionTests(unittest.TestCase):
         self.assertIn("video_bitrate=1500000", desc)
 
     def test_default_video_port_is_derived_from_sender_address(self):
-        pipe = SenderPipeline(_config(addr=0x13, name="sender-l1"), clock=_fixed_clock())
+        pipe = SenderPipeline(_config(addr=0x13, name="payload"), clock=_fixed_clock())
         self.assertIn("port=5013", pipe.build_pipeline_description())
 
     def test_set_bitrate_takes_effect_on_next_description(self):
@@ -129,11 +129,11 @@ class PipelineDescriptionTests(unittest.TestCase):
 
     def test_recording_path_includes_sender_name_and_timestamp(self):
         pipe = SenderPipeline(
-            _config(name="sender-l1", recording_path="/var/arc/recordings"),
+            _config(name="payload", recording_path="/var/arc/recordings"),
             clock=_fixed_clock("2026-05-08 12:34:56"),
         )
         path = pipe._next_recording_path()
-        self.assertEqual(path, Path("/var/arc/recordings/sender-l1-20260508-123456.mp4"))
+        self.assertEqual(path, Path("/var/arc/recordings/payload-20260508-123456.mp4"))
 
     def test_overrides_in_constructor_propagate(self):
         pipe = SenderPipeline(
@@ -151,7 +151,7 @@ class PipelineDescriptionTests(unittest.TestCase):
         self.assertIn("videotestsrc is-live=true", desc)
         self.assertIn("x264enc tune=zerolatency name=enc", desc)
         self.assertEqual(pipe.recording_dir, Path("/data/arc"))
-        self.assertIn(str(Path("/data/arc") / "sender-c-20260508-123456.mp4"), desc)
+        self.assertIn(str(Path("/data/arc") / "airbrake-20260508-123456.mp4"), desc)
 
     def test_default_rotation_emits_no_videoflip(self):
         pipe = SenderPipeline(_config(), clock=_fixed_clock())

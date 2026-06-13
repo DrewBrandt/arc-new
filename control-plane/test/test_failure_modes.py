@@ -66,18 +66,17 @@ class _FakeLink:
 
 def _sender_route_name(addr: int) -> str:
     aliases = {
-        p.ADDR_SENDER_N: "sender-n",
-        p.ADDR_SENDER_C: "sender-c",
-        p.ADDR_SENDER_L1: "sender-l1",
-        p.ADDR_SENDER_L2: "sender-l2",
-        p.ADDR_SENDER_GROUND: "sender-ground",
+        p.ADDR_SENDER_DOWN: "down",
+        p.ADDR_SENDER_AIRBRAKE: "airbrake",
+        p.ADDR_SENDER_PAYLOAD: "payload",
+        p.ADDR_SENDER_GROUND: "ground",
     }
     return aliases.get(addr, f"sender-0x{addr:02x}")
 
 
 def _make_controller_with_switcher(
-    sender_addrs: tuple[int, ...] = (p.ADDR_SENDER_C, p.ADDR_SENDER_L1, p.ADDR_SENDER_GROUND),
-    initial_sources: tuple[int, int] = (p.ADDR_CONTROLLER, p.ADDR_SENDER_C),
+    sender_addrs: tuple[int, ...] = (p.ADDR_SENDER_AIRBRAKE, p.ADDR_SENDER_PAYLOAD, p.ADDR_SENDER_GROUND),
+    initial_sources: tuple[int, int] = (p.ADDR_CONTROLLER, p.ADDR_SENDER_AIRBRAKE),
     peer_timeout_s: float = 3.0,
 ):
     pipeline = _FakePipeline()
@@ -113,25 +112,25 @@ class ActiveSenderDropFailureMode(unittest.TestCase):
 
     def test_active_remote_offline_drives_slot_to_empty_other_slots_unaffected(self):
         controller, switcher, pipeline, _links = _make_controller_with_switcher()
-        # Bring Sender-C and Sender-L1 online.
-        controller.receive(_heartbeat(p.ADDR_SENDER_C, session=10), now=1.0)
-        controller.receive(_heartbeat(p.ADDR_SENDER_L1, session=11), now=1.0)
+        # Bring airbrake and payload online.
+        controller.receive(_heartbeat(p.ADDR_SENDER_AIRBRAKE, session=10), now=1.0)
+        controller.receive(_heartbeat(p.ADDR_SENDER_PAYLOAD, session=11), now=1.0)
         switcher.reconcile(now=1.0)
 
-        # Slot 1 should now be showing Sender-C; slot 0 stays local.
-        self.assertEqual(switcher.active_sources, [p.ADDR_CONTROLLER, p.ADDR_SENDER_C])
-        self.assertIn(p.ADDR_SENDER_C, switcher._streaming_remotes)
+        # Slot 1 should now be showing airbrake; slot 0 stays local.
+        self.assertEqual(switcher.active_sources, [p.ADDR_CONTROLLER, p.ADDR_SENDER_AIRBRAKE])
+        self.assertIn(p.ADDR_SENDER_AIRBRAKE, switcher._streaming_remotes)
         # Snapshot the pipeline call count so we can assert *only* the
         # offline-driven set_source happens after this point.
         prior_calls = list(pipeline.source_calls)
 
-        # Sender-L1 keeps speaking right before the tick so it stays online;
-        # Sender-C goes silent past peer_timeout_s and is the only drop.
-        controller.receive(_heartbeat(p.ADDR_SENDER_L1, session=11, seq=1), now=9.5)
+        # payload keeps speaking right before the tick so it stays online;
+        # airbrake goes silent past peer_timeout_s and is the only drop.
+        controller.receive(_heartbeat(p.ADDR_SENDER_PAYLOAD, session=11, seq=1), now=9.5)
         offline = controller.tick(now=10.0)
-        self.assertEqual(offline, [p.ADDR_SENDER_C])
-        self.assertFalse(controller.health.is_online(p.ADDR_SENDER_C))
-        self.assertFalse(controller.sender(p.ADDR_SENDER_C).online)
+        self.assertEqual(offline, [p.ADDR_SENDER_AIRBRAKE])
+        self.assertFalse(controller.health.is_online(p.ADDR_SENDER_AIRBRAKE))
+        self.assertFalse(controller.sender(p.ADDR_SENDER_AIRBRAKE).online)
 
         # Reconcile sees the desired source offline -> slot 1 -> EMPTY.
         switcher.reconcile(now=10.0)
@@ -139,11 +138,11 @@ class ActiveSenderDropFailureMode(unittest.TestCase):
         new_calls = pipeline.source_calls[len(prior_calls):]
         self.assertEqual(new_calls, [(1, p.ADDR_UNASSIGNED)])
 
-        # Sender-L1 was not in any slot but stays online and untouched.
-        self.assertTrue(controller.health.is_online(p.ADDR_SENDER_L1))
-        # The desired source for slot 1 is still Sender-C; it'll come back
+        # payload was not in any slot but stays online and untouched.
+        self.assertTrue(controller.health.is_online(p.ADDR_SENDER_PAYLOAD))
+        # The desired source for slot 1 is still airbrake; it'll come back
         # automatically once a heartbeat is observed again.
-        self.assertEqual(switcher.sources[1], p.ADDR_SENDER_C)
+        self.assertEqual(switcher.sources[1], p.ADDR_SENDER_AIRBRAKE)
 
 
 class FcNUartSilentFailureMode(unittest.TestCase):
@@ -159,7 +158,7 @@ class FcNUartSilentFailureMode(unittest.TestCase):
         # FC-N speaks, then a remote sender comes online too so we have
         # a non-trivial active state to defend.
         controller.receive(_heartbeat(p.ADDR_FC_N, session=5), now=0.5)
-        controller.receive(_heartbeat(p.ADDR_SENDER_C, session=10), now=0.5)
+        controller.receive(_heartbeat(p.ADDR_SENDER_AIRBRAKE, session=10), now=0.5)
         switcher.reconcile(now=0.5)
 
         # FC-N applies a layout via the pipeline directly (simulating an
@@ -171,14 +170,14 @@ class FcNUartSilentFailureMode(unittest.TestCase):
         prior_sources = list(pipeline.source_calls)
         prior_active = list(switcher.active_sources)
 
-        # FC-N goes silent past peer_timeout_s. Sender-C keeps speaking
+        # FC-N goes silent past peer_timeout_s. airbrake keeps speaking
         # so it stays online and is unaffected.
-        controller.receive(_heartbeat(p.ADDR_SENDER_C, session=10, seq=1), now=2.0)
+        controller.receive(_heartbeat(p.ADDR_SENDER_AIRBRAKE, session=10, seq=1), now=2.0)
         offline = controller.tick(now=4.5)
 
         self.assertEqual(offline, [p.ADDR_FC_N])
         self.assertFalse(controller.health.is_online(p.ADDR_FC_N))
-        self.assertTrue(controller.health.is_online(p.ADDR_SENDER_C))
+        self.assertTrue(controller.health.is_online(p.ADDR_SENDER_AIRBRAKE))
 
         # Reconcile after the timeout must not touch the pipeline (FC-N
         # going offline doesn't change desired sources).
@@ -202,7 +201,7 @@ class ControllerRebootInFlightFailureMode(unittest.TestCase):
     def test_initial_reconcile_with_remote_offline_keeps_slot_empty(self):
         controller, switcher, pipeline, _links = _make_controller_with_switcher()
         # Fresh controller: no peers heard from yet, including the desired
-        # Sender-C in slot 1. The switcher's active_sources for slot 1 is
+        # airbrake in slot 1. The switcher's active_sources for slot 1 is
         # already EMPTY at construction, so reconcile() finds nothing to
         # change and emits no pipeline calls (the boot screen stays black
         # naturally instead of via an explicit set_source).
@@ -210,49 +209,49 @@ class ControllerRebootInFlightFailureMode(unittest.TestCase):
         self.assertEqual(switcher.active_sources, [p.ADDR_CONTROLLER, p.ADDR_UNASSIGNED])
         self.assertEqual(pipeline.source_calls, [])
         # No START_STREAM has been issued because the Sender isn't reachable.
-        self.assertNotIn(p.ADDR_SENDER_C, switcher._streaming_remotes)
+        self.assertNotIn(p.ADDR_SENDER_AIRBRAKE, switcher._streaming_remotes)
 
     def test_remote_sender_connecting_after_boot_brings_slot_online(self):
         controller, switcher, pipeline, _links = _make_controller_with_switcher()
         switcher.reconcile(now=0.0)  # boot reconcile, slot 1 -> EMPTY
         prior_calls = list(pipeline.source_calls)
 
-        # Sender-C boots later and starts heartbeating.
-        controller.receive(_heartbeat(p.ADDR_SENDER_C, session=10), now=2.0)
+        # airbrake boots later and starts heartbeating.
+        controller.receive(_heartbeat(p.ADDR_SENDER_AIRBRAKE, session=10), now=2.0)
         switcher.reconcile(now=2.0)
 
-        self.assertEqual(switcher.active_sources[1], p.ADDR_SENDER_C)
-        self.assertIn((1, p.ADDR_SENDER_C), pipeline.source_calls[len(prior_calls):])
+        self.assertEqual(switcher.active_sources[1], p.ADDR_SENDER_AIRBRAKE)
+        self.assertIn((1, p.ADDR_SENDER_AIRBRAKE), pipeline.source_calls[len(prior_calls):])
         # And the Controller actually told the Sender to start streaming.
-        self.assertIn(p.ADDR_SENDER_C, switcher._streaming_remotes)
+        self.assertIn(p.ADDR_SENDER_AIRBRAKE, switcher._streaming_remotes)
 
 
 class IdleSenderOfflineFailureMode(unittest.TestCase):
-    """Section 12.4: 'Sender-GND loses wifi at launch' (the launch case).
+    """Section 12.4: 'ground loses wifi at launch' (the launch case).
 
-    Sender-GND is online but not wired into any compositor slot. When it
+    ground is online but not wired into any compositor slot. When it
     drops, only its own state changes; slots and other senders are
     untouched, and no pipeline call is generated as a side effect.
     """
 
     def test_idle_sender_offline_does_not_disturb_active_slots(self):
         controller, switcher, pipeline, _links = _make_controller_with_switcher()
-        # Sender-C is online and active; Sender-GND is online but idle.
-        controller.receive(_heartbeat(p.ADDR_SENDER_C, session=10), now=1.0)
+        # airbrake is online and active; ground is online but idle.
+        controller.receive(_heartbeat(p.ADDR_SENDER_AIRBRAKE, session=10), now=1.0)
         controller.receive(_heartbeat(p.ADDR_SENDER_GROUND, session=20), now=1.0)
         switcher.reconcile(now=1.0)
         prior_active = list(switcher.active_sources)
         prior_calls = list(pipeline.source_calls)
 
-        # Sender-GND drops at "launch". Sender-C keeps heartbeating so
-        # only Sender-GND should appear in the offline transitions.
-        controller.receive(_heartbeat(p.ADDR_SENDER_C, session=10, seq=1), now=4.5)
+        # ground drops at "launch". airbrake keeps heartbeating so
+        # only ground should appear in the offline transitions.
+        controller.receive(_heartbeat(p.ADDR_SENDER_AIRBRAKE, session=10, seq=1), now=4.5)
         offline = controller.tick(now=5.0)
         self.assertEqual(offline, [p.ADDR_SENDER_GROUND])
         self.assertFalse(controller.health.is_online(p.ADDR_SENDER_GROUND))
 
-        # Sender-C remains online and active in slot 1.
-        self.assertTrue(controller.health.is_online(p.ADDR_SENDER_C))
+        # airbrake remains online and active in slot 1.
+        self.assertTrue(controller.health.is_online(p.ADDR_SENDER_AIRBRAKE))
         switcher.reconcile(now=5.0)
         self.assertEqual(switcher.active_sources, prior_active)
         # No new pipeline calls for the GND drop -- slot composition unchanged.

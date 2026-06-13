@@ -30,14 +30,14 @@
 // Video / Controller (FC_VIDEO):
 //   layout <id>                            SET_LAYOUT (numeric, 0..255)
 //   source <slot> <name|addr>              SET_SOURCE
-//                                          name: empty | local | sender-c | sender-l1 | sender-l2 | sender-n | sender-ground
+//                                          name: empty | local/pi-5-nose | down | airbrake | payload | ground
 //   overlay <text>                         SET_OVERLAY (rest of line)
 //   status                                 GET_STATUS
 //
-// Radio (r=rocket=0x20, g=ground=0x21):
-//   freq <r|g> <hz>                        SET_FREQUENCY
-//   txpower <r|g> <dbm>                    SET_TX_POWER (signed dBm)
-//   radiostatus <r|g>                      GET_STATUS
+// Radio (cmd=command radio 0x20, g=ground 0x21):
+//   freq <cmd|g> <hz>                        SET_FREQUENCY
+//   txpower <cmd|g> <dbm>                    SET_TX_POWER (signed dBm)
+//   radiostatus <cmd|g>                      GET_STATUS
 //
 // Power (n=nose=0x30, l=lower=0x31):
 //   out <n|l> <chan> <on|off>              SET_OUTPUT
@@ -118,16 +118,19 @@ static const SenderAlias kAliases[] = {
   {"none",           ARC_ADDR_UNASSIGNED},
   {"local",          ARC_ADDR_CONTROLLER},
   {"controller",     ARC_ADDR_CONTROLLER},
-  {"sender-n",       ARC_ADDR_SENDER_N},
-  {"sender-c",       ARC_ADDR_SENDER_C},
-  {"sender-l1",      ARC_ADDR_SENDER_L1},
-  {"sender-l2",      ARC_ADDR_SENDER_L2},
-  {"sender-ground",  ARC_ADDR_SENDER_GROUND},
+  {"pi-5-nose",      ARC_ADDR_CONTROLLER},
+  {"main-tube",      ARC_ADDR_CONTROLLER},
+  {"down",           ARC_ADDR_SENDER_DOWN},
+  {"airbrake",       ARC_ADDR_SENDER_AIRBRAKE},
+  {"payload",        ARC_ADDR_SENDER_PAYLOAD},
+  {"ground",         ARC_ADDR_SENDER_GROUND},
   // Radios
-  {"radio-r",        ARC_ADDR_RADIO_R},
-  {"rocket-radio",   ARC_ADDR_RADIO_R},
+  {"radio-cmd",      ARC_ADDR_RADIO_CMD},
+  {"cmd-radio",      ARC_ADDR_RADIO_CMD},
   {"radio-g",        ARC_ADDR_RADIO_G},
   {"ground-radio",   ARC_ADDR_RADIO_G},
+  {"radio-data",     ARC_ADDR_RADIO_DATA},
+  {"data-radio",     ARC_ADDR_RADIO_DATA},
   // Power boards
   {"arch-mega-n",    ARC_ADDR_ARCH_MEGA_N},
   {"arch-n",         ARC_ADDR_ARCH_MEGA_N},
@@ -137,23 +140,28 @@ static const SenderAlias kAliases[] = {
   {"lower-power",    ARC_ADDR_ARCH_MEGA_L},
 };
 
+// RADIO-family control (freq/txpower/status) only applies to the ARC-speaking
+// radios: the command radio (cmd, 0x20) and the ground radio (g, 0x21). The
+// live data downlink (RADIO_DATA, 0x22) speaks a proprietary protocol and is
+// driven by the Teensy hub's transcode path, not these commands.
 static bool resolve_radio(const char* arg, uint8_t* out) {
   if (!arg) return false;
-  if (strcasecmp(arg, "r") == 0 || strcasecmp(arg, "rocket") == 0) {
-    *out = ARC_ADDR_RADIO_R; return true;
+  if (strcasecmp(arg, "cmd") == 0 || strcasecmp(arg, "command") == 0
+      || strcasecmp(arg, "r") == 0 || strcasecmp(arg, "rocket") == 0) {
+    *out = ARC_ADDR_RADIO_CMD; return true;
   }
   if (strcasecmp(arg, "g") == 0 || strcasecmp(arg, "ground") == 0) {
     *out = ARC_ADDR_RADIO_G; return true;
   }
   for (const auto& a : kAliases) {
     if (strcasecmp(arg, a.name) == 0
-        && (a.addr == ARC_ADDR_RADIO_R || a.addr == ARC_ADDR_RADIO_G)) {
+        && (a.addr == ARC_ADDR_RADIO_CMD || a.addr == ARC_ADDR_RADIO_G)) {
       *out = a.addr; return true;
     }
   }
   char* end = nullptr;
   long v = strtol(arg, &end, 0);
-  if (end && *end == '\0' && (v == ARC_ADDR_RADIO_R || v == ARC_ADDR_RADIO_G)) {
+  if (end && *end == '\0' && (v == ARC_ADDR_RADIO_CMD || v == ARC_ADDR_RADIO_G)) {
     *out = (uint8_t)v; return true;
   }
   return false;
@@ -385,13 +393,13 @@ static void cmd_help() {
   Serial.println(F("Video / Controller (FC_VIDEO):"));
   Serial.println(F("  layout <id>                   SET_LAYOUT (0..255)"));
   Serial.println(F("  source <slot> <name|addr>     SET_SOURCE"));
-  Serial.println(F("                                name: empty|local|sender-c|sender-l1|sender-l2|sender-n|sender-ground"));
+  Serial.println(F("                                name: empty|local/pi-5-nose|down|airbrake|payload|ground"));
   Serial.println(F("  overlay <text>                SET_OVERLAY (rest of line)"));
   Serial.println(F("  status                        GET_STATUS"));
-  Serial.println(F("Radio (r=rocket, g=ground):"));
-  Serial.println(F("  freq <r|g> <hz>               RADIO SET_FREQUENCY"));
-  Serial.println(F("  txpower <r|g> <dbm>           RADIO SET_TX_POWER (signed dBm)"));
-  Serial.println(F("  radiostatus <r|g>             RADIO GET_STATUS"));
+  Serial.println(F("Radio (cmd=command radio, g=ground):"));
+  Serial.println(F("  freq <cmd|g> <hz>             RADIO SET_FREQUENCY"));
+  Serial.println(F("  txpower <cmd|g> <dbm>         RADIO SET_TX_POWER (signed dBm)"));
+  Serial.println(F("  radiostatus <cmd|g>           RADIO GET_STATUS"));
   Serial.println(F("Power (n=nose, l=lower):"));
   Serial.println(F("  out <n|l> <chan> <on|off>     POWER SET_OUTPUT"));
   Serial.println(F("  outmask <n|l> <enable> <state>  POWER SET_OUTPUT_MASK (hex bytes, e.g. 0x15 0x11)"));
@@ -484,7 +492,7 @@ static void cmd_session(const char* arg) {
 // RADIO commands
 // ----------------------------------------------------------------------
 static void cmd_freq(const char* radio_str, const char* hz_str) {
-  if (!radio_str || !hz_str) { Serial.println(F("usage: freq <r|g> <hz>")); return; }
+  if (!radio_str || !hz_str) { Serial.println(F("usage: freq <cmd|g> <hz>")); return; }
   uint8_t dst = 0;
   if (!resolve_radio(radio_str, &dst)) {
     Serial.print(F("unknown radio: ")); Serial.println(radio_str);
@@ -510,7 +518,7 @@ static void cmd_freq(const char* radio_str, const char* hz_str) {
 }
 
 static void cmd_txpower(const char* radio_str, const char* dbm_str) {
-  if (!radio_str || !dbm_str) { Serial.println(F("usage: txpower <r|g> <dbm>")); return; }
+  if (!radio_str || !dbm_str) { Serial.println(F("usage: txpower <cmd|g> <dbm>")); return; }
   uint8_t dst = 0;
   if (!resolve_radio(radio_str, &dst)) {
     Serial.print(F("unknown radio: ")); Serial.println(radio_str);
@@ -535,7 +543,7 @@ static void cmd_txpower(const char* radio_str, const char* dbm_str) {
 }
 
 static void cmd_radiostatus(const char* radio_str) {
-  if (!radio_str) { Serial.println(F("usage: radiostatus <r|g>")); return; }
+  if (!radio_str) { Serial.println(F("usage: radiostatus <cmd|g>")); return; }
   uint8_t dst = 0;
   if (!resolve_radio(radio_str, &dst)) {
     Serial.print(F("unknown radio: ")); Serial.println(radio_str);

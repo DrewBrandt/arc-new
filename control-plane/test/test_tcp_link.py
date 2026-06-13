@@ -10,7 +10,7 @@ from arc.tcp_link import QueuedTcpLink, TcpFrameLink, read_frame, write_frame
 
 def sample_frame(seq=1, payload=b"hello"):
     return p.Frame(
-        src=p.ADDR_SENDER_C,
+        src=p.ADDR_SENDER_AIRBRAKE,
         dst=p.ADDR_CONTROLLER,
         flags=p.FLAG_RELIABLE,
         session=3,
@@ -135,7 +135,7 @@ class TcpLinkTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(client_frames), 1)
             ack = client_frames[0]
             self.assertEqual(ack.src, p.ADDR_CONTROLLER)
-            self.assertEqual(ack.dst, p.ADDR_SENDER_C)
+            self.assertEqual(ack.dst, p.ADDR_SENDER_AIRBRAKE)
             self.assertEqual(ack.payload, bytes.fromhex("1234"))
 
             client_link.close()
@@ -150,7 +150,7 @@ class TcpLinkTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_queued_tcp_link_carries_reliable_node_flow(self):
         client = Node(
-            addr=p.ADDR_SENDER_C,
+            addr=p.ADDR_SENDER_AIRBRAKE,
             routes={},
             default_route="server",
             session=3,
@@ -158,7 +158,7 @@ class TcpLinkTests(unittest.IsolatedAsyncioTestCase):
         )
         server_node = Node(
             addr=p.ADDR_CONTROLLER,
-            routes={p.ADDR_SENDER_C: "client"},
+            routes={p.ADDR_SENDER_AIRBRAKE: "client"},
             session=9,
         )
         server_link = QueuedTcpLink(server_node.receive, reconnect_delay_s=0.01)
@@ -246,7 +246,7 @@ class TcpLinkTests(unittest.IsolatedAsyncioTestCase):
             "127.0.0.1",
             0,
             link_for_peer=lambda _ip: None,
-            link_for_frame=lambda frame: link if frame.src == p.ADDR_SENDER_C else None,
+            link_for_frame=lambda frame: link if frame.src == p.ADDR_SENDER_AIRBRAKE else None,
         )
         await server.start()
         port = server._server.sockets[0].getsockname()[1]

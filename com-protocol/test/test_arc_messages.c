@@ -181,17 +181,17 @@ TEST(fc_video_set_layout_roundtrip)
 
 TEST(fc_video_set_source_roundtrip)
 {
-    arc_fc_video_set_source_t in = { .slot_id = 1, .sender_addr = ARC_ADDR_SENDER_C };
+    arc_fc_video_set_source_t in = { .slot_id = 1, .sender_addr = ARC_ADDR_SENDER_AIRBRAKE };
     uint8_t buf[4];
     int n = arc_fc_video_set_source_encode(&in, buf, sizeof(buf));
     ASSERT_EQ(n, 2);
     ASSERT_EQ(buf[0], 1);
-    ASSERT_EQ(buf[1], ARC_ADDR_SENDER_C);
+    ASSERT_EQ(buf[1], ARC_ADDR_SENDER_AIRBRAKE);
 
     arc_fc_video_set_source_t out;
     ASSERT_EQ(arc_fc_video_set_source_decode(buf, n, &out), ARC_OK);
     ASSERT_EQ(out.slot_id, 1);
-    ASSERT_EQ(out.sender_addr, ARC_ADDR_SENDER_C);
+    ASSERT_EQ(out.sender_addr, ARC_ADDR_SENDER_AIRBRAKE);
 }
 
 // ----------------------------------------------------------------------
@@ -243,13 +243,13 @@ TEST(fc_video_status_report_roundtrip)
     arc_fc_video_status_report_t in = {0};
     in.slot_count = 2;
     in.slots[0] = ARC_ADDR_CONTROLLER;
-    in.slots[1] = ARC_ADDR_SENDER_C;
+    in.slots[1] = ARC_ADDR_SENDER_AIRBRAKE;
     in.sender_count = 3;
-    in.senders[0] = (arc_fc_video_sender_status_t){ARC_ADDR_SENDER_N, 0x01};
-    in.senders[1] = (arc_fc_video_sender_status_t){ARC_ADDR_SENDER_C,
+    in.senders[0] = (arc_fc_video_sender_status_t){ARC_ADDR_SENDER_DOWN, 0x01};
+    in.senders[1] = (arc_fc_video_sender_status_t){ARC_ADDR_SENDER_AIRBRAKE,
         ARC_FC_VIDEO_STATUS_FLAG_ONLINE | ARC_FC_VIDEO_STATUS_FLAG_TRANSMITTING |
         ARC_FC_VIDEO_STATUS_FLAG_RECORDING};
-    in.senders[2] = (arc_fc_video_sender_status_t){ARC_ADDR_SENDER_L1, 0x00};
+    in.senders[2] = (arc_fc_video_sender_status_t){ARC_ADDR_SENDER_PAYLOAD, 0x00};
 
     uint8_t buf[32];
     int n = arc_fc_video_status_report_encode(&in, buf, sizeof(buf));
@@ -257,11 +257,11 @@ TEST(fc_video_status_report_roundtrip)
     ASSERT_EQ(n, 10);
     const uint8_t expected[] = {
         2,
-        ARC_ADDR_CONTROLLER, ARC_ADDR_SENDER_C,
+        ARC_ADDR_CONTROLLER, ARC_ADDR_SENDER_AIRBRAKE,
         3,
-        ARC_ADDR_SENDER_N, 0x01,
-        ARC_ADDR_SENDER_C, 0x07,
-        ARC_ADDR_SENDER_L1, 0x00,
+        ARC_ADDR_SENDER_DOWN, 0x01,
+        ARC_ADDR_SENDER_AIRBRAKE, 0x07,
+        ARC_ADDR_SENDER_PAYLOAD, 0x00,
     };
     ASSERT_BYTES_EQ(buf, expected, 10);
 
@@ -269,9 +269,9 @@ TEST(fc_video_status_report_roundtrip)
     ASSERT_EQ(arc_fc_video_status_report_decode(buf, n, &out), ARC_OK);
     ASSERT_EQ(out.slot_count, 2);
     ASSERT_EQ(out.slots[0], ARC_ADDR_CONTROLLER);
-    ASSERT_EQ(out.slots[1], ARC_ADDR_SENDER_C);
+    ASSERT_EQ(out.slots[1], ARC_ADDR_SENDER_AIRBRAKE);
     ASSERT_EQ(out.sender_count, 3);
-    ASSERT_EQ(out.senders[1].addr, ARC_ADDR_SENDER_C);
+    ASSERT_EQ(out.senders[1].addr, ARC_ADDR_SENDER_AIRBRAKE);
     ASSERT_EQ(out.senders[1].flags, 0x07);
 }
 

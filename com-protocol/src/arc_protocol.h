@@ -47,19 +47,21 @@ extern "C" {
 // implementations agree.
 // ----------------------------------------------------------------------
 #define ARC_ADDR_UNASSIGNED     0x00
-#define ARC_ADDR_GROUND         0x01
+#define ARC_ADDR_GROUND         0x01  // ground station (reached over RF via RADIO_CMD)
 #define ARC_ADDR_FC_N           0x02
 #define ARC_ADDR_FC_C           0x03
 #define ARC_ADDR_FC_L           0x04
-#define ARC_ADDR_CONTROLLER     0x10
-#define ARC_ADDR_SENDER_N       0x11
-#define ARC_ADDR_SENDER_C       0x12
-#define ARC_ADDR_SENDER_L1      0x13
-#define ARC_ADDR_SENDER_L2      0x14
-#define ARC_ADDR_SENDER_GROUND  0x15
-// Radios (0x20-0x2F reserved for radio-class nodes).
-#define ARC_ADDR_RADIO_R        0x20  // rocket radio (attached to FC-N over UART)
-#define ARC_ADDR_RADIO_G        0x21  // ground radio (attached to ground station)
+#define ARC_ADDR_TEENSY_HUB     0x05  // nosecone central router (Teensy 4.1)
+#define ARC_ADDR_CONTROLLER     0x10  // Pi 5 "pi-5-nose": video aggregator + WiFi gateway
+#define ARC_ADDR_SENDER_DOWN    0x11  // nose Pi 0, camera pointing down the rocket
+#define ARC_ADDR_SENDER_AIRBRAKE 0x12 // airbrake-bay Pi 0
+#define ARC_ADDR_SENDER_PAYLOAD 0x13  // payload-bay Pi 0
+// 0x14 retired (was SENDER_L2)
+#define ARC_ADDR_SENDER_GROUND  0x15  // ground-side Pi 0
+// Radios (0x20-0x2F reserved for radio-class nodes); both hang off the Teensy hub.
+#define ARC_ADDR_RADIO_CMD      0x20  // rocket command/status radio (on Teensy)
+#define ARC_ADDR_RADIO_G        0x21  // ground radio (OTA peer of RADIO_CMD)
+#define ARC_ADDR_RADIO_DATA     0x22  // live data downlink; proprietary, Teensy transcodes
 // Power boards (0x30-0x3F reserved for power-class nodes).
 #define ARC_ADDR_ARCH_MEGA_N    0x30  // nosecone ARCH-Mega
 #define ARC_ADDR_ARCH_MEGA_L    0x31  // lower-bay ARCH-Mega

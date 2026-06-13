@@ -49,14 +49,14 @@ class ControllerConfigTests(unittest.TestCase):
 
             [[senders]]
             id = 0x12
-            name = "sender-c"
+            name = "airbrake"
             ip = "10.42.0.12"
             paired_fc = 0x03
 
             [[senders]]
-            id = 0x14
-            name = "sender-l2"
-            ip = "10.42.0.14"
+            id = 0x15
+            name = "ground"
+            ip = "10.42.0.15"
 
             [layouts.split]
             slot_0 = { xpos = 0, ypos = 0, width = 640, height = 480, alpha = 1.0 }
@@ -78,7 +78,7 @@ class ControllerConfigTests(unittest.TestCase):
         self.assertEqual(cfg.senders[0].paired_fc, 0x03)
         self.assertIsNone(cfg.senders[1].paired_fc)
         self.assertIn("split", cfg.layouts)
-        self.assertEqual(cfg.initial_sources, (p.ADDR_CONTROLLER, p.ADDR_SENDER_C))
+        self.assertEqual(cfg.initial_sources, (p.ADDR_CONTROLLER, p.ADDR_SENDER_AIRBRAKE))
         self.assertIsInstance(cfg.video, ControllerVideoConfig)
         self.assertEqual(cfg.video.mixer, "glvideomixer")
         self.assertEqual(cfg.video.sink, "kmssink connector-id=51 sync=false")
@@ -179,7 +179,7 @@ class SenderConfigTests(unittest.TestCase):
             """
             [node]
             address = 0x12
-            name = "sender-c"
+            name = "airbrake"
             paired_fc = 0x03
 
             [controller]
@@ -218,8 +218,8 @@ class SenderConfigTests(unittest.TestCase):
         path = write_toml(
             """
             [node]
-            address = 0x14
-            name = "sender-l2"
+            address = 0x15
+            name = "ground"
 
             [controller]
             ip = "10.42.0.1"

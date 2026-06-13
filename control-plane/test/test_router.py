@@ -28,10 +28,10 @@ def frame_for(dst):
 class RouterTests(unittest.TestCase):
     def test_delivers_local_frame(self):
         delivered = []
-        links = {"sender-c": FakeLink()}
+        links = {"airbrake": FakeLink()}
         router = Router(
             my_addr=p.ADDR_CONTROLLER,
-            routes={p.ADDR_FC_C: "sender-c"},
+            routes={p.ADDR_FC_C: "airbrake"},
             links=links,
             local_handler=delivered.append,
         )
@@ -42,14 +42,14 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(result.action, "local")
         self.assertIsNone(result.link_name)
         self.assertEqual(delivered, [frame])
-        self.assertEqual(links["sender-c"].sent, [])
+        self.assertEqual(links["airbrake"].sent, [])
 
     def test_forwards_routed_frame(self):
         delivered = []
-        links = {"sender-c": FakeLink()}
+        links = {"airbrake": FakeLink()}
         router = Router(
             my_addr=p.ADDR_CONTROLLER,
-            routes={p.ADDR_FC_C: "sender-c"},
+            routes={p.ADDR_FC_C: "airbrake"},
             links=links,
             local_handler=delivered.append,
         )
@@ -58,9 +58,9 @@ class RouterTests(unittest.TestCase):
         result = router.route(frame)
 
         self.assertEqual(result.action, "forwarded")
-        self.assertEqual(result.link_name, "sender-c")
+        self.assertEqual(result.link_name, "airbrake")
         self.assertEqual(delivered, [])
-        self.assertEqual(links["sender-c"].sent, [frame])
+        self.assertEqual(links["airbrake"].sent, [frame])
 
     def test_unknown_destination_raises(self):
         router = Router(
@@ -76,7 +76,7 @@ class RouterTests(unittest.TestCase):
     def test_missing_link_raises(self):
         router = Router(
             my_addr=p.ADDR_CONTROLLER,
-            routes={p.ADDR_FC_C: "sender-c"},
+            routes={p.ADDR_FC_C: "airbrake"},
             links={},
             local_handler=lambda frame: None,
         )
@@ -87,11 +87,10 @@ class RouterTests(unittest.TestCase):
     def test_controller_route_table(self):
         links = {
             "uart-fc-n": FakeLink(),
-            "sender-c": FakeLink(),
-            "sender-l1": FakeLink(),
-            "sender-n": FakeLink(),
-            "sender-l2": FakeLink(),
-            "sender-ground": FakeLink(),
+            "airbrake": FakeLink(),
+            "payload": FakeLink(),
+            "down": FakeLink(),
+            "ground": FakeLink(),
         }
         router = Router(
             my_addr=p.ADDR_CONTROLLER,
@@ -103,9 +102,9 @@ class RouterTests(unittest.TestCase):
         cases = [
             (p.ADDR_FC_N, "uart-fc-n"),
             (p.ADDR_GROUND, "uart-fc-n"),
-            (p.ADDR_FC_C, "sender-c"),
-            (p.ADDR_FC_L, "sender-l1"),
-            (p.ADDR_SENDER_C, "sender-c"),
+            (p.ADDR_FC_C, "airbrake"),
+            (p.ADDR_FC_L, "payload"),
+            (p.ADDR_SENDER_AIRBRAKE, "airbrake"),
         ]
         for dst, link_name in cases:
             with self.subTest(dst=dst):
@@ -117,7 +116,7 @@ class RouterTests(unittest.TestCase):
     def test_sender_routes_paired_fc_and_defaults_to_controller(self):
         links = {"uart-fc": FakeLink(), "controller": FakeLink()}
         router = Router(
-            my_addr=p.ADDR_SENDER_C,
+            my_addr=p.ADDR_SENDER_AIRBRAKE,
             routes=sender_routes(p.ADDR_FC_C),
             links=links,
             local_handler=lambda frame: None,
@@ -135,7 +134,7 @@ class RouterTests(unittest.TestCase):
     def test_video_only_sender_defaults_everything_to_controller(self):
         links = {"controller": FakeLink()}
         router = Router(
-            my_addr=p.ADDR_SENDER_L2,
+            my_addr=p.ADDR_SENDER_GROUND,
             routes=sender_routes(),
             links=links,
             local_handler=lambda frame: None,

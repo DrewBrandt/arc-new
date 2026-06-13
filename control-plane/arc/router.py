@@ -69,13 +69,12 @@ def controller_routes() -> dict[int, str]:
     return {
         protocol.ADDR_GROUND: "uart-fc-n",
         protocol.ADDR_FC_N: "uart-fc-n",
-        protocol.ADDR_FC_C: "sender-c",
-        protocol.ADDR_FC_L: "sender-l1",
-        protocol.ADDR_SENDER_N: "sender-n",
-        protocol.ADDR_SENDER_C: "sender-c",
-        protocol.ADDR_SENDER_L1: "sender-l1",
-        protocol.ADDR_SENDER_L2: "sender-l2",
-        protocol.ADDR_SENDER_GROUND: "sender-ground",
+        protocol.ADDR_FC_C: "airbrake",
+        protocol.ADDR_FC_L: "payload",
+        protocol.ADDR_SENDER_DOWN: "down",
+        protocol.ADDR_SENDER_AIRBRAKE: "airbrake",
+        protocol.ADDR_SENDER_PAYLOAD: "payload",
+        protocol.ADDR_SENDER_GROUND: "ground",
     }
 
 

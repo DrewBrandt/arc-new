@@ -54,9 +54,9 @@ class FullTopologyTests(unittest.TestCase):
         pipeline = FakeControllerPipeline()
         controller = Controller(
             sender_addrs=(
-                p.ADDR_SENDER_C,
-                p.ADDR_SENDER_L1,
-                p.ADDR_SENDER_L2,
+                p.ADDR_SENDER_AIRBRAKE,
+                p.ADDR_SENDER_PAYLOAD,
+                p.ADDR_SENDER_GROUND,
             ),
             session=10,
             first_seq=1000,
@@ -72,35 +72,35 @@ class FullTopologyTests(unittest.TestCase):
 
             return handle
 
-        sender_c = Sender(
-            addr=p.ADDR_SENDER_C,
+        sender_airbrake = Sender(
+            addr=p.ADDR_SENDER_AIRBRAKE,
             paired_fc=p.ADDR_FC_C,
             controller_addr=p.ADDR_CONTROLLER,
             session=20,
             first_seq=2000,
             heartbeat_interval_s=10.0,
             peer_timeout_s=10.0,
-            video_command_handler=video_handler(p.ADDR_SENDER_C),
+            video_command_handler=video_handler(p.ADDR_SENDER_AIRBRAKE),
         )
-        sender_l1 = Sender(
-            addr=p.ADDR_SENDER_L1,
+        sender_payload = Sender(
+            addr=p.ADDR_SENDER_PAYLOAD,
             paired_fc=p.ADDR_FC_L,
             controller_addr=p.ADDR_CONTROLLER,
             session=21,
             first_seq=2100,
             heartbeat_interval_s=10.0,
             peer_timeout_s=10.0,
-            video_command_handler=video_handler(p.ADDR_SENDER_L1),
+            video_command_handler=video_handler(p.ADDR_SENDER_PAYLOAD),
         )
-        sender_l2 = Sender(
-            addr=p.ADDR_SENDER_L2,
+        sender_ground = Sender(
+            addr=p.ADDR_SENDER_GROUND,
             paired_fc=None,
             controller_addr=p.ADDR_CONTROLLER,
             session=22,
             first_seq=2200,
             heartbeat_interval_s=10.0,
             peer_timeout_s=10.0,
-            video_command_handler=video_handler(p.ADDR_SENDER_L2),
+            video_command_handler=video_handler(p.ADDR_SENDER_GROUND),
         )
 
         fc_n = Node(
@@ -113,14 +113,14 @@ class FullTopologyTests(unittest.TestCase):
         fc_c = Node(
             addr=p.ADDR_FC_C,
             routes={},
-            default_route="sender-c",
+            default_route="airbrake",
             session=31,
             first_seq=3100,
         )
         fc_l = Node(
             addr=p.ADDR_FC_L,
             routes={},
-            default_route="sender-l1",
+            default_route="payload",
             session=32,
             first_seq=3200,
         )
@@ -128,49 +128,49 @@ class FullTopologyTests(unittest.TestCase):
         links = {
             "fc-n->controller": DirectLink(controller),
             "controller->fc-n": DirectLink(fc_n),
-            "controller->sender-c": DirectLink(sender_c),
-            "sender-c->controller": DirectLink(controller),
-            "sender-c->fc-c": DirectLink(fc_c),
-            "fc-c->sender-c": DirectLink(sender_c),
-            "controller->sender-l1": DirectLink(sender_l1),
-            "sender-l1->controller": DirectLink(controller),
-            "sender-l1->fc-l": DirectLink(fc_l),
-            "fc-l->sender-l1": DirectLink(sender_l1),
-            "controller->sender-l2": DirectLink(sender_l2),
-            "sender-l2->controller": DirectLink(controller),
+            "controller->airbrake": DirectLink(sender_airbrake),
+            "airbrake->controller": DirectLink(controller),
+            "airbrake->fc-c": DirectLink(fc_c),
+            "fc-c->airbrake": DirectLink(sender_airbrake),
+            "controller->payload": DirectLink(sender_payload),
+            "payload->controller": DirectLink(controller),
+            "payload->fc-l": DirectLink(fc_l),
+            "fc-l->payload": DirectLink(sender_payload),
+            "controller->ground": DirectLink(sender_ground),
+            "ground->controller": DirectLink(controller),
         }
 
         controller.set_links(
             {
                 "uart-fc-n": links["controller->fc-n"],
-                "sender-c": links["controller->sender-c"],
-                "sender-l1": links["controller->sender-l1"],
-                "sender-l2": links["controller->sender-l2"],
+                "airbrake": links["controller->airbrake"],
+                "payload": links["controller->payload"],
+                "ground": links["controller->ground"],
             }
         )
-        sender_c.set_links(
+        sender_airbrake.set_links(
             {
-                "controller": links["sender-c->controller"],
-                "uart-fc": links["sender-c->fc-c"],
+                "controller": links["airbrake->controller"],
+                "uart-fc": links["airbrake->fc-c"],
             }
         )
-        sender_l1.set_links(
+        sender_payload.set_links(
             {
-                "controller": links["sender-l1->controller"],
-                "uart-fc": links["sender-l1->fc-l"],
+                "controller": links["payload->controller"],
+                "uart-fc": links["payload->fc-l"],
             }
         )
-        sender_l2.set_links({"controller": links["sender-l2->controller"]})
+        sender_ground.set_links({"controller": links["ground->controller"]})
         fc_n.set_links({"controller": links["fc-n->controller"]})
-        fc_c.set_links({"sender-c": links["fc-c->sender-c"]})
-        fc_l.set_links({"sender-l1": links["fc-l->sender-l1"]})
+        fc_c.set_links({"airbrake": links["fc-c->airbrake"]})
+        fc_l.set_links({"payload": links["fc-l->payload"]})
         controller.fc_video_handler = make_fc_video_handler(
             pipeline,
             ["local_full", "split", "remote_full"],
             SourceSwitcher(
                 controller,
                 pipeline,
-                (p.ADDR_SENDER_C, p.ADDR_SENDER_L1, p.ADDR_SENDER_L2),
+                (p.ADDR_SENDER_AIRBRAKE, p.ADDR_SENDER_PAYLOAD, p.ADDR_SENDER_GROUND),
             ),
         )
 
@@ -178,9 +178,9 @@ class FullTopologyTests(unittest.TestCase):
             "pipeline": pipeline,
             "video_calls": video_calls,
             "controller": controller,
-            "sender_c": sender_c,
-            "sender_l1": sender_l1,
-            "sender_l2": sender_l2,
+            "sender_airbrake": sender_airbrake,
+            "sender_payload": sender_payload,
+            "sender_ground": sender_ground,
             "fc_n": fc_n,
             "fc_c": fc_c,
             "fc_l": fc_l,
@@ -190,9 +190,9 @@ class FullTopologyTests(unittest.TestCase):
     def test_fleet_control_fc_routing_status_and_fc_video(self):
         topo = self.build_topology()
         controller: Controller = topo["controller"]
-        sender_c: Sender = topo["sender_c"]
-        sender_l1: Sender = topo["sender_l1"]
-        sender_l2: Sender = topo["sender_l2"]
+        sender_airbrake: Sender = topo["sender_airbrake"]
+        sender_payload: Sender = topo["sender_payload"]
+        sender_ground: Sender = topo["sender_ground"]
         fc_n: Node = topo["fc_n"]
         fc_c: Node = topo["fc_c"]
         fc_l: Node = topo["fc_l"]
@@ -200,7 +200,7 @@ class FullTopologyTests(unittest.TestCase):
         video_calls = topo["video_calls"]
         controller.health.observe(
             p.Frame(
-                src=p.ADDR_SENDER_L1,
+                src=p.ADDR_SENDER_PAYLOAD,
                 dst=p.ADDR_CONTROLLER,
                 flags=0,
                 session=21,
@@ -213,18 +213,18 @@ class FullTopologyTests(unittest.TestCase):
         )
         links = topo["links"]
 
-        controller.start_sender(p.ADDR_SENDER_C, now=1.0)
-        controller.set_sender_bitrate(p.ADDR_SENDER_L2, 1_800_000, now=1.1)
+        controller.start_sender(p.ADDR_SENDER_AIRBRAKE, now=1.0)
+        controller.set_sender_bitrate(p.ADDR_SENDER_GROUND, 1_800_000, now=1.1)
 
-        self.assertTrue(sender_c.transmitting)
-        self.assertTrue(sender_c.recording)
-        self.assertEqual(sender_l2.bitrate_bps, 1_800_000)
+        self.assertTrue(sender_airbrake.transmitting)
+        self.assertTrue(sender_airbrake.recording)
+        self.assertEqual(sender_ground.bitrate_bps, 1_800_000)
         self.assertEqual(controller.node.reliable.pending_count, 0)
         self.assertEqual(
             [(addr, vt) for addr, vt, _ in video_calls],
             [
-                (p.ADDR_SENDER_C, messages.VideoType.START_STREAM),
-                (p.ADDR_SENDER_L2, messages.VideoType.SET_BITRATE),
+                (p.ADDR_SENDER_AIRBRAKE, messages.VideoType.START_STREAM),
+                (p.ADDR_SENDER_GROUND, messages.VideoType.SET_BITRATE),
             ],
         )
 
@@ -239,8 +239,8 @@ class FullTopologyTests(unittest.TestCase):
 
         self.assertEqual(fc_n.inbox, [telemetry])
         self.assertEqual(fc_c.reliable.pending_count, 0)
-        self.assertEqual(links["fc-c->sender-c"].sent[-1], telemetry)
-        self.assertEqual(links["sender-c->controller"].sent[-1], telemetry)
+        self.assertEqual(links["fc-c->airbrake"].sent[-1], telemetry)
+        self.assertEqual(links["airbrake->controller"].sent[-1], telemetry)
         self.assertEqual(links["controller->fc-n"].sent[-1], telemetry)
 
         command = fc_n.send_local(
@@ -255,8 +255,8 @@ class FullTopologyTests(unittest.TestCase):
         self.assertEqual(fc_l.inbox, [command])
         self.assertEqual(fc_n.reliable.pending_count, 0)
         self.assertEqual(links["fc-n->controller"].sent[-1], command)
-        self.assertEqual(links["controller->sender-l1"].sent[-1], command)
-        self.assertEqual(links["sender-l1->fc-l"].sent[-1], command)
+        self.assertEqual(links["controller->payload"].sent[-1], command)
+        self.assertEqual(links["payload->fc-l"].sent[-1], command)
 
         layout = fc_n.send_local(
             dst=p.ADDR_CONTROLLER,
@@ -278,7 +278,7 @@ class FullTopologyTests(unittest.TestCase):
             dst=p.ADDR_CONTROLLER,
             family=p.FAMILY_FC_VIDEO,
             type=messages.FcVideoType.SET_SOURCE,
-            payload=messages.SetSource(1, p.ADDR_SENDER_L1).encode(),
+            payload=messages.SetSource(1, p.ADDR_SENDER_PAYLOAD).encode(),
             reliable=True,
             now=4.2,
         )
@@ -289,8 +289,8 @@ class FullTopologyTests(unittest.TestCase):
         self.assertIn(source, controller.node.inbox)
         self.assertEqual(pipeline.layouts, ["split"])
         self.assertEqual(pipeline.overlays, ["KD3BBP / BOOST"])
-        self.assertEqual(pipeline.sources, [(1, p.ADDR_SENDER_L1)])
-        self.assertTrue(sender_l1.transmitting)
+        self.assertEqual(pipeline.sources, [(1, p.ADDR_SENDER_PAYLOAD)])
+        self.assertTrue(sender_payload.transmitting)
 
         report = messages.StatusReport(
             state=0x03,
@@ -301,24 +301,24 @@ class FullTopologyTests(unittest.TestCase):
             tx_frames=120,
             dropped_frames=2,
         )
-        sender_c.report_status(report, now=5.0)
+        sender_airbrake.report_status(report, now=5.0)
 
-        sender_status = controller.sender(p.ADDR_SENDER_C).last_status
+        sender_status = controller.sender(p.ADDR_SENDER_AIRBRAKE).last_status
         self.assertIsNotNone(sender_status)
         self.assertEqual(sender_status.report, report)
-        self.assertTrue(controller.health.is_online(p.ADDR_SENDER_C))
-        self.assertTrue(sender_c.health.is_online(p.ADDR_CONTROLLER))
-        self.assertFalse(sender_l2.transmitting)
+        self.assertTrue(controller.health.is_online(p.ADDR_SENDER_AIRBRAKE))
+        self.assertTrue(sender_airbrake.health.is_online(p.ADDR_CONTROLLER))
+        self.assertFalse(sender_ground.transmitting)
 
     def test_get_status_reply_round_trip_to_fc_n(self):
         topo = self.build_topology()
         controller: Controller = topo["controller"]
-        sender_c: Sender = topo["sender_c"]
-        sender_l1: Sender = topo["sender_l1"]
-        sender_l2: Sender = topo["sender_l2"]
+        sender_airbrake: Sender = topo["sender_airbrake"]
+        sender_payload: Sender = topo["sender_payload"]
+        sender_ground: Sender = topo["sender_ground"]
         fc_n: Node = topo["fc_n"]
         pipeline: FakeControllerPipeline = topo["pipeline"]
-        sender_addrs = (p.ADDR_SENDER_C, p.ADDR_SENDER_L1, p.ADDR_SENDER_L2)
+        sender_addrs = (p.ADDR_SENDER_AIRBRAKE, p.ADDR_SENDER_PAYLOAD, p.ADDR_SENDER_GROUND)
 
         # Re-install the FC_VIDEO handler with controller wired in so
         # GET_STATUS produces an actual reply.
@@ -332,12 +332,12 @@ class FullTopologyTests(unittest.TestCase):
             now=lambda: 7.0,
         )
 
-        # Sender-C is online and currently being told to stream;
-        # Sender-L1 is online but idle; Sender-L2 has been hard-stopped.
+        # airbrake is online and currently being told to stream;
+        # payload is online but idle; ground has been hard-stopped.
         for addr, session in (
-            (p.ADDR_SENDER_C, 20),
-            (p.ADDR_SENDER_L1, 21),
-            (p.ADDR_SENDER_L2, 22),
+            (p.ADDR_SENDER_AIRBRAKE, 20),
+            (p.ADDR_SENDER_PAYLOAD, 21),
+            (p.ADDR_SENDER_GROUND, 22),
         ):
             controller.health.observe(
                 p.Frame(
@@ -352,8 +352,8 @@ class FullTopologyTests(unittest.TestCase):
                 ),
                 now=6.0,
             )
-        controller.start_sender(p.ADDR_SENDER_C, now=6.1)
-        controller.hard_stop_sender(p.ADDR_SENDER_L2, now=6.2)
+        controller.start_sender(p.ADDR_SENDER_AIRBRAKE, now=6.1)
+        controller.hard_stop_sender(p.ADDR_SENDER_GROUND, now=6.2)
 
         # Drain inboxes to make the next assertion specific to GET_STATUS.
         fc_n.inbox.clear()
@@ -385,22 +385,22 @@ class FullTopologyTests(unittest.TestCase):
         )
         flags_by_addr = {s.addr: s.flags for s in report.senders}
         self.assertEqual(set(flags_by_addr), set(sender_addrs))
-        # Sender-C: online + transmitting + recording
+        # airbrake: online + transmitting + recording
         self.assertEqual(
-            flags_by_addr[p.ADDR_SENDER_C],
+            flags_by_addr[p.ADDR_SENDER_AIRBRAKE],
             messages.FC_VIDEO_STATUS_FLAG_ONLINE
             | messages.FC_VIDEO_STATUS_FLAG_TRANSMITTING
             | messages.FC_VIDEO_STATUS_FLAG_RECORDING,
         )
-        # Sender-L1: online, no command issued -> recording assumed (boot default), not transmitting
+        # payload: online, no command issued -> recording assumed (boot default), not transmitting
         self.assertEqual(
-            flags_by_addr[p.ADDR_SENDER_L1],
+            flags_by_addr[p.ADDR_SENDER_PAYLOAD],
             messages.FC_VIDEO_STATUS_FLAG_ONLINE
             | messages.FC_VIDEO_STATUS_FLAG_RECORDING,
         )
-        # Sender-L2: online but HARD_STOP cleared the recording bit
+        # ground: online but HARD_STOP cleared the recording bit
         self.assertEqual(
-            flags_by_addr[p.ADDR_SENDER_L2],
+            flags_by_addr[p.ADDR_SENDER_GROUND],
             messages.FC_VIDEO_STATUS_FLAG_ONLINE,
         )
 
@@ -416,7 +416,7 @@ class FullTopologyTests(unittest.TestCase):
         )
 
         # Quiet the senders so unrelated assertions on sender state don't trip.
-        del sender_c, sender_l1, sender_l2
+        del sender_airbrake, sender_payload, sender_ground
 
 
 if __name__ == "__main__":

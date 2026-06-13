@@ -37,7 +37,7 @@ class SenderLinkTests(unittest.TestCase):
     def build_link(self, reliable_commands=True):
         sink = CommandSink()
         link = SenderLink(
-            sender_addr=p.ADDR_SENDER_C,
+            sender_addr=p.ADDR_SENDER_AIRBRAKE,
             send_command=sink.send,
             reliable_commands=reliable_commands,
         )
@@ -60,7 +60,7 @@ class SenderLinkTests(unittest.TestCase):
         )
         self.assertEqual([call["payload"] for call in sink.calls], [b"", b"", b""])
         self.assertEqual([call["reliable"] for call in sink.calls], [True, True, True])
-        self.assertEqual([call["dst"] for call in sink.calls], [p.ADDR_SENDER_C] * 3)
+        self.assertEqual([call["dst"] for call in sink.calls], [p.ADDR_SENDER_AIRBRAKE] * 3)
         self.assertEqual([start.seq, stop.seq, hard_stop.seq], [1, 2, 3])
 
     def test_set_bitrate_encodes_payload(self):
@@ -68,7 +68,7 @@ class SenderLinkTests(unittest.TestCase):
 
         frame = link.set_bitrate(2_500_000, now=4.0)
 
-        self.assertEqual(frame.dst, p.ADDR_SENDER_C)
+        self.assertEqual(frame.dst, p.ADDR_SENDER_AIRBRAKE)
         self.assertEqual(frame.family, p.FAMILY_VIDEO)
         self.assertEqual(frame.type, m.VideoType.SET_BITRATE)
         self.assertEqual(frame.payload, m.SetBitrate(2_500_000).encode())
@@ -94,7 +94,7 @@ class SenderLinkTests(unittest.TestCase):
             dropped_frames=4,
         )
         frame = p.Frame(
-            src=p.ADDR_SENDER_C,
+            src=p.ADDR_SENDER_AIRBRAKE,
             dst=p.ADDR_CONTROLLER,
             flags=0,
             session=2,
@@ -116,7 +116,7 @@ class SenderLinkTests(unittest.TestCase):
         link, _sink = self.build_link()
         report = m.StatusReport(0, 1, 2, 3, -4, 5, 6)
         frame = p.Frame(
-            src=p.ADDR_SENDER_C,
+            src=p.ADDR_SENDER_AIRBRAKE,
             dst=p.ADDR_CONTROLLER,
             flags=0,
             session=1,
@@ -137,7 +137,7 @@ class SenderLinkTests(unittest.TestCase):
         good_report = m.StatusReport(0, 1, 2, 3, -4, 5, 6)
         cases = [
             p.Frame(
-                src=p.ADDR_SENDER_L1,
+                src=p.ADDR_SENDER_PAYLOAD,
                 dst=p.ADDR_CONTROLLER,
                 flags=0,
                 session=1,
@@ -147,7 +147,7 @@ class SenderLinkTests(unittest.TestCase):
                 payload=good_report.encode(),
             ),
             p.Frame(
-                src=p.ADDR_SENDER_C,
+                src=p.ADDR_SENDER_AIRBRAKE,
                 dst=p.ADDR_CONTROLLER,
                 flags=0,
                 session=1,
@@ -157,7 +157,7 @@ class SenderLinkTests(unittest.TestCase):
                 payload=b"",
             ),
             p.Frame(
-                src=p.ADDR_SENDER_C,
+                src=p.ADDR_SENDER_AIRBRAKE,
                 dst=p.ADDR_CONTROLLER,
                 flags=0,
                 session=1,

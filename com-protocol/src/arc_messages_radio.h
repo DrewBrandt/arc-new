@@ -4,10 +4,16 @@
 // Direction: anyone -> radio for the command types (SET_FREQUENCY,
 // SET_TX_POWER, GET_STATUS); radio -> originator for STATUS_REPORT.
 //
-// The two radios in the system are addressed as ARC_ADDR_RADIO_R
-// (rocket, attached to FC-N over UART) and ARC_ADDR_RADIO_G (ground).
-// Every radio module also acts as a forwarding bridge for over-the-air
-// frames; this catalog only covers self-addressed control/status.
+// The rocket-side radios both hang off the Teensy hub:
+//   ARC_ADDR_RADIO_CMD  (0x20) -- command/status link; full ARC participant.
+//   ARC_ADDR_RADIO_DATA (0x22) -- live data downlink. It speaks a proprietary,
+//                                 non-ARC protocol, so the hub TERMINATES frames
+//                                 addressed to it and transcodes them into the
+//                                 vendor format (see tools/teensy-hub/data_radio).
+//                                 The message types below do NOT apply to it.
+// ARC_ADDR_RADIO_G (0x21) is the ground-side OTA peer of RADIO_CMD.
+// A radio module also acts as a forwarding bridge for over-the-air frames;
+// this catalog only covers self-addressed control/status on ARC radios.
 
 #ifndef ARC_MESSAGES_RADIO_H
 #define ARC_MESSAGES_RADIO_H

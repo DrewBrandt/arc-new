@@ -21,19 +21,21 @@ MAX_FRAME_SIZE = MAX_ENCODED_SIZE - COBS_OVERHEAD
 MAX_PAYLOAD_SIZE = MAX_FRAME_SIZE - OVERHEAD
 
 ADDR_UNASSIGNED = 0x00
-ADDR_GROUND = 0x01
+ADDR_GROUND = 0x01  # ground station (reached over RF via RADIO_CMD)
 ADDR_FC_N = 0x02
 ADDR_FC_C = 0x03
 ADDR_FC_L = 0x04
-ADDR_CONTROLLER = 0x10
-ADDR_SENDER_N = 0x11
-ADDR_SENDER_C = 0x12
-ADDR_SENDER_L1 = 0x13
-ADDR_SENDER_L2 = 0x14
-ADDR_SENDER_GROUND = 0x15
-# Radios (0x20-0x2F reserved for radio-class nodes).
-ADDR_RADIO_R = 0x20  # rocket radio (attached to FC-N over UART)
-ADDR_RADIO_G = 0x21  # ground radio (attached to ground station)
+ADDR_TEENSY_HUB = 0x05  # nosecone central router (Teensy 4.1)
+ADDR_CONTROLLER = 0x10  # Pi 5 "pi-5-nose": video aggregator + WiFi gateway
+ADDR_SENDER_DOWN = 0x11  # nose Pi 0, camera pointing down the rocket
+ADDR_SENDER_AIRBRAKE = 0x12  # airbrake-bay Pi 0
+ADDR_SENDER_PAYLOAD = 0x13  # payload-bay Pi 0
+# 0x14 retired (was SENDER_L2)
+ADDR_SENDER_GROUND = 0x15  # ground-side Pi 0
+# Radios (0x20-0x2F reserved for radio-class nodes); both hang off the Teensy hub.
+ADDR_RADIO_CMD = 0x20  # rocket command/status radio (on Teensy)
+ADDR_RADIO_G = 0x21  # ground radio (OTA peer of RADIO_CMD)
+ADDR_RADIO_DATA = 0x22  # live data downlink; proprietary, Teensy transcodes
 # Power boards (0x30-0x3F reserved for power-class nodes).
 ADDR_ARCH_MEGA_N = 0x30  # nosecone ARCH-Mega
 ADDR_ARCH_MEGA_L = 0x31  # lower-bay ARCH-Mega

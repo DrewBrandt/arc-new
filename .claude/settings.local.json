@@ -38,7 +38,10 @@
       "Bash(python -m unittest test.test_pipeline_controller test.test_controller)",
       "Bash(python -m unittest test.test_pipeline_controller)",
       "Bash(python -m unittest discover -s test -p \"test_pipeline_controller.py\")",
-      "Bash(python -c \"import sys; sys.path.insert\\(0, '.'\\); from arc.pipeline_controller import ControllerPipeline; print\\('import ok'\\)\")"
+      "Bash(python -c \"import sys; sys.path.insert\\(0, '.'\\); from arc.pipeline_controller import ControllerPipeline; print\\('import ok'\\)\")",
+      "PowerShell(Get-Command ssh)",
+      "PowerShell(Get-Command plink -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command sshpass -ErrorAction SilentlyContinue)"
     ]
   }
 }

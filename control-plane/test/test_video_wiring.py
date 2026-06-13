@@ -61,7 +61,7 @@ class SenderVideoHandlerTests(unittest.TestCase):
             self.calls.append((vt, frame))
 
         self.sender = Sender(
-            addr=protocol.ADDR_SENDER_C,
+            addr=protocol.ADDR_SENDER_AIRBRAKE,
             paired_fc=protocol.ADDR_FC_C,
             video_command_handler=handler,
         )
@@ -114,7 +114,7 @@ class SenderVideoHandlerTests(unittest.TestCase):
         self.assertEqual(observed, [(True, True), (False, True)])
 
     def test_handler_optional_default_no_op(self):
-        sender = Sender(addr=protocol.ADDR_SENDER_C)
+        sender = Sender(addr=protocol.ADDR_SENDER_AIRBRAKE)
         # No handler registered; applying a command must not raise.
         frame = _frame(
             src=protocol.ADDR_CONTROLLER,
@@ -190,7 +190,7 @@ class ControllerFcVideoHandlerTests(unittest.TestCase):
     def test_existing_video_status_report_path_unchanged(self):
         # FC_VIDEO dispatch must not steal VIDEO STATUS_REPORT frames.
         ctrl = Controller(
-            sender_addrs=(protocol.ADDR_SENDER_C,),
+            sender_addrs=(protocol.ADDR_SENDER_AIRBRAKE,),
             fc_video_handler=lambda vt, f: None,
         )
         report = messages.StatusReport(
@@ -203,7 +203,7 @@ class ControllerFcVideoHandlerTests(unittest.TestCase):
             dropped_frames=0,
         )
         frame = _frame(
-            src=protocol.ADDR_SENDER_C,
+            src=protocol.ADDR_SENDER_AIRBRAKE,
             dst=protocol.ADDR_CONTROLLER,
             family=protocol.FAMILY_VIDEO,
             type=messages.VideoType.STATUS_REPORT,
@@ -320,7 +320,7 @@ class SenderMainAdapterTests(unittest.TestCase):
     def test_boot_video_command_updates_sender_and_pipeline(self):
         pipe = FakeSenderPipeline()
         sender = Sender(
-            addr=protocol.ADDR_SENDER_C,
+            addr=protocol.ADDR_SENDER_AIRBRAKE,
             paired_fc=None,
             video_command_handler=make_video_command_handler(pipe),
         )
@@ -376,17 +376,17 @@ class ControllerMainAdapterTests(unittest.TestCase):
         pipe = FakeControllerPipeline()
         link = FakeLink()
         controller = Controller(
-            links={"sender-c": link},
-            sender_addrs=(protocol.ADDR_SENDER_C,),
+            links={"airbrake": link},
+            sender_addrs=(protocol.ADDR_SENDER_AIRBRAKE,),
         )
         switcher = SourceSwitcher(
             controller,
             pipe,
-            (protocol.ADDR_SENDER_C,),
+            (protocol.ADDR_SENDER_AIRBRAKE,),
         )
         controller.health.observe(
             _frame(
-                src=protocol.ADDR_SENDER_C,
+                src=protocol.ADDR_SENDER_AIRBRAKE,
                 dst=protocol.ADDR_CONTROLLER,
                 family=protocol.FAMILY_NETMGMT,
                 type=protocol.NETMGMT_HEARTBEAT,
@@ -403,8 +403,8 @@ class ControllerMainAdapterTests(unittest.TestCase):
         )
         handler(messages.FcVideoType.SET_SOURCE, src_frame)
 
-        self.assertEqual(switcher.sources[0], protocol.ADDR_SENDER_C)
-        self.assertEqual(pipe.sources_set, [(0, protocol.ADDR_SENDER_C)])
+        self.assertEqual(switcher.sources[0], protocol.ADDR_SENDER_AIRBRAKE)
+        self.assertEqual(pipe.sources_set, [(0, protocol.ADDR_SENDER_AIRBRAKE)])
         self.assertEqual(len(link.sent), 1)
         self.assertEqual(link.sent[0].type, messages.VideoType.START_STREAM)
 
@@ -412,18 +412,18 @@ class ControllerMainAdapterTests(unittest.TestCase):
         pipe = FakeControllerPipeline()
         link = FakeLink()
         controller = Controller(
-            links={"sender-c": link},
-            sender_addrs=(protocol.ADDR_SENDER_C,),
+            links={"airbrake": link},
+            sender_addrs=(protocol.ADDR_SENDER_AIRBRAKE,),
         )
         switcher = SourceSwitcher(
             controller,
             pipe,
-            (protocol.ADDR_SENDER_C,),
-            initial_sources=(protocol.ADDR_CONTROLLER, protocol.ADDR_SENDER_C),
+            (protocol.ADDR_SENDER_AIRBRAKE,),
+            initial_sources=(protocol.ADDR_CONTROLLER, protocol.ADDR_SENDER_AIRBRAKE),
         )
         controller.health.observe(
             _frame(
-                src=protocol.ADDR_SENDER_C,
+                src=protocol.ADDR_SENDER_AIRBRAKE,
                 dst=protocol.ADDR_CONTROLLER,
                 family=protocol.FAMILY_NETMGMT,
                 type=protocol.NETMGMT_HEARTBEAT,
@@ -431,11 +431,11 @@ class ControllerMainAdapterTests(unittest.TestCase):
             now=1.0,
         )
 
-        switcher.set_source(1, protocol.ADDR_SENDER_C, now=1.0)
+        switcher.set_source(1, protocol.ADDR_SENDER_AIRBRAKE, now=1.0)
 
-        self.assertEqual(switcher.sources[1], protocol.ADDR_SENDER_C)
-        self.assertEqual(switcher.active_sources[1], protocol.ADDR_SENDER_C)
-        self.assertEqual(pipe.sources_set, [(1, protocol.ADDR_SENDER_C)])
+        self.assertEqual(switcher.sources[1], protocol.ADDR_SENDER_AIRBRAKE)
+        self.assertEqual(switcher.active_sources[1], protocol.ADDR_SENDER_AIRBRAKE)
+        self.assertEqual(pipe.sources_set, [(1, protocol.ADDR_SENDER_AIRBRAKE)])
         self.assertEqual([f.type for f in link.sent], [messages.VideoType.START_STREAM])
 
     def test_set_source_switches_between_remote_senders(self):
@@ -443,15 +443,15 @@ class ControllerMainAdapterTests(unittest.TestCase):
         c_link = FakeLink()
         l1_link = FakeLink()
         controller = Controller(
-            links={"sender-c": c_link, "sender-l1": l1_link},
-            sender_addrs=(protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+            links={"airbrake": c_link, "payload": l1_link},
+            sender_addrs=(protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD),
         )
         switcher = SourceSwitcher(
             controller,
             pipe,
-            (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+            (protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD),
         )
-        for addr in (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1):
+        for addr in (protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD):
             controller.health.observe(
                 _frame(
                     src=addr,
@@ -470,7 +470,7 @@ class ControllerMainAdapterTests(unittest.TestCase):
                 dst=0,
                 family=protocol.FAMILY_FC_VIDEO,
                 type=messages.FcVideoType.SET_SOURCE,
-                payload=messages.SetSource(1, protocol.ADDR_SENDER_C).encode(),
+                payload=messages.SetSource(1, protocol.ADDR_SENDER_AIRBRAKE).encode(),
             ),
         )
         handler(
@@ -480,7 +480,7 @@ class ControllerMainAdapterTests(unittest.TestCase):
                 dst=0,
                 family=protocol.FAMILY_FC_VIDEO,
                 type=messages.FcVideoType.SET_SOURCE,
-                payload=messages.SetSource(1, protocol.ADDR_SENDER_L1).encode(),
+                payload=messages.SetSource(1, protocol.ADDR_SENDER_PAYLOAD).encode(),
             ),
         )
 
@@ -492,12 +492,12 @@ class ControllerMainAdapterTests(unittest.TestCase):
             messages.VideoType.STOP_STREAM,
             messages.VideoType.START_STREAM,
         ])
-        self.assertEqual(switcher.sources[1], protocol.ADDR_SENDER_L1)
+        self.assertEqual(switcher.sources[1], protocol.ADDR_SENDER_PAYLOAD)
         self.assertEqual(
             pipe.sources_set,
             [
-                (1, protocol.ADDR_SENDER_C),
-                (1, protocol.ADDR_SENDER_L1),
+                (1, protocol.ADDR_SENDER_AIRBRAKE),
+                (1, protocol.ADDR_SENDER_PAYLOAD),
             ],
         )
 
@@ -506,16 +506,16 @@ class ControllerMainAdapterTests(unittest.TestCase):
         c_link = FakeLink()
         l1_link = FakeLink()
         controller = Controller(
-            links={"sender-c": c_link, "sender-l1": l1_link},
-            sender_addrs=(protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+            links={"airbrake": c_link, "payload": l1_link},
+            sender_addrs=(protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD),
         )
         switcher = SourceSwitcher(
             controller,
             pipe,
-            (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+            (protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD),
             keep_remote_streams=True,
         )
-        for addr in (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1):
+        for addr in (protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD):
             controller.health.observe(
                 _frame(
                     src=addr,
@@ -527,22 +527,22 @@ class ControllerMainAdapterTests(unittest.TestCase):
             )
 
         switcher.set_sources(
-            {0: protocol.ADDR_CONTROLLER, 1: protocol.ADDR_SENDER_C},
+            {0: protocol.ADDR_CONTROLLER, 1: protocol.ADDR_SENDER_AIRBRAKE},
             now=1.0,
         )
         switcher.set_sources(
-            {0: protocol.ADDR_SENDER_C, 1: protocol.ADDR_SENDER_L1},
+            {0: protocol.ADDR_SENDER_AIRBRAKE, 1: protocol.ADDR_SENDER_PAYLOAD},
             now=2.0,
         )
         switcher.set_sources(
-            {0: protocol.ADDR_SENDER_L1, 1: protocol.ADDR_CONTROLLER},
+            {0: protocol.ADDR_SENDER_PAYLOAD, 1: protocol.ADDR_CONTROLLER},
             now=3.0,
         )
 
         self.assertEqual([f.type for f in c_link.sent], [messages.VideoType.START_STREAM])
         self.assertEqual([f.type for f in l1_link.sent], [messages.VideoType.START_STREAM])
         self.assertEqual(pipe.sources_set[-2:], [
-            (0, protocol.ADDR_SENDER_L1),
+            (0, protocol.ADDR_SENDER_PAYLOAD),
             (1, protocol.ADDR_CONTROLLER),
         ])
 
@@ -551,16 +551,16 @@ class ControllerMainAdapterTests(unittest.TestCase):
         c_link = FakeLink()
         l1_link = FakeLink()
         controller = Controller(
-            links={"sender-c": c_link, "sender-l1": l1_link},
-            sender_addrs=(protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+            links={"airbrake": c_link, "payload": l1_link},
+            sender_addrs=(protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD),
         )
         switcher = SourceSwitcher(
             controller,
             pipe,
-            (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+            (protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD),
             keep_remote_streams=False,
         )
-        for addr in (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1):
+        for addr in (protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD):
             controller.health.observe(
                 _frame(
                     src=addr,
@@ -572,7 +572,7 @@ class ControllerMainAdapterTests(unittest.TestCase):
             )
 
         switcher.set_sources(
-            {0: protocol.ADDR_CONTROLLER, 1: protocol.ADDR_SENDER_C},
+            {0: protocol.ADDR_CONTROLLER, 1: protocol.ADDR_SENDER_AIRBRAKE},
             now=1.0,
         )
 
@@ -580,7 +580,7 @@ class ControllerMainAdapterTests(unittest.TestCase):
         self.assertEqual([f.type for f in l1_link.sent], [messages.VideoType.STOP_STREAM])
 
         switcher.set_sources(
-            {0: protocol.ADDR_CONTROLLER, 1: protocol.ADDR_SENDER_C},
+            {0: protocol.ADDR_CONTROLLER, 1: protocol.ADDR_SENDER_AIRBRAKE},
             now=2.0,
         )
 
@@ -590,15 +590,15 @@ class ControllerMainAdapterTests(unittest.TestCase):
         pipe = FakeControllerPipeline()
         link = FakeLink()
         controller = Controller(
-            links={"sender-c": link},
-            sender_addrs=(protocol.ADDR_SENDER_C,),
+            links={"airbrake": link},
+            sender_addrs=(protocol.ADDR_SENDER_AIRBRAKE,),
         )
-        switcher = SourceSwitcher(controller, pipe, (protocol.ADDR_SENDER_C,))
+        switcher = SourceSwitcher(controller, pipe, (protocol.ADDR_SENDER_AIRBRAKE,))
         handler = make_fc_video_handler(pipe, [], switcher)
 
         for payload in (
-            messages.SetSource(0, protocol.ADDR_SENDER_L1).encode(),
-            messages.SetSource(9, protocol.ADDR_SENDER_C).encode(),
+            messages.SetSource(0, protocol.ADDR_SENDER_PAYLOAD).encode(),
+            messages.SetSource(9, protocol.ADDR_SENDER_AIRBRAKE).encode(),
         ):
             handler(
                 messages.FcVideoType.SET_SOURCE,
@@ -637,17 +637,17 @@ class ControllerMainAdapterTests(unittest.TestCase):
         c_link = FakeLink()
         l1_link = FakeLink()
         controller = Controller(
-            links={"sender-c": c_link, "sender-l1": l1_link},
-            sender_addrs=(protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+            links={"airbrake": c_link, "payload": l1_link},
+            sender_addrs=(protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD),
         )
         switcher = SourceSwitcher(
             controller,
             pipe,
-            (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+            (protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD),
         )
         controller.health.observe(
             _frame(
-                src=protocol.ADDR_SENDER_L1,
+                src=protocol.ADDR_SENDER_PAYLOAD,
                 dst=protocol.ADDR_CONTROLLER,
                 family=protocol.FAMILY_NETMGMT,
                 type=protocol.NETMGMT_HEARTBEAT,
@@ -658,14 +658,14 @@ class ControllerMainAdapterTests(unittest.TestCase):
             pipe,
             switcher,
             ["local_full", "split"],
-            {"sender-c": protocol.ADDR_SENDER_C, "sender-l1": protocol.ADDR_SENDER_L1},
+            {"airbrake": protocol.ADDR_SENDER_AIRBRAKE, "payload": protocol.ADDR_SENDER_PAYLOAD},
         )
 
-        response = bench.execute("source 1 sender-l1", now=1.0)
+        response = bench.execute("source 1 payload", now=1.0)
 
-        self.assertEqual(response, "OK source slot1 sender-l1(0x13)")
-        self.assertEqual(switcher.sources[1], protocol.ADDR_SENDER_L1)
-        self.assertEqual(pipe.sources_set, [(1, protocol.ADDR_SENDER_L1)])
+        self.assertEqual(response, "OK source slot1 payload(0x13)")
+        self.assertEqual(switcher.sources[1], protocol.ADDR_SENDER_PAYLOAD)
+        self.assertEqual(pipe.sources_set, [(1, protocol.ADDR_SENDER_PAYLOAD)])
         self.assertEqual([f.type for f in l1_link.sent], [messages.VideoType.START_STREAM])
         self.assertEqual(c_link.sent, [])
 
@@ -686,15 +686,15 @@ class ControllerMainAdapterTests(unittest.TestCase):
             c_link = FakeLink()
             l1_link = FakeLink()
             controller = Controller(
-                links={"sender-c": c_link, "sender-l1": l1_link},
-                sender_addrs=(protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+                links={"airbrake": c_link, "payload": l1_link},
+                sender_addrs=(protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD),
             )
             switcher = SourceSwitcher(
                 controller,
                 pipe,
-                (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1),
+                (protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD),
             )
-            for addr in (protocol.ADDR_SENDER_C, protocol.ADDR_SENDER_L1):
+            for addr in (protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD):
                 controller.health.observe(
                     _frame(
                         src=addr,
@@ -709,17 +709,17 @@ class ControllerMainAdapterTests(unittest.TestCase):
                 switcher,
                 ["local_full", "split"],
                 {
-                    "sender-c": protocol.ADDR_SENDER_C,
-                    "sender-l1": protocol.ADDR_SENDER_L1,
+                    "airbrake": protocol.ADDR_SENDER_AIRBRAKE,
+                    "payload": protocol.ADDR_SENDER_PAYLOAD,
                 },
             )
             sources = [
                 protocol.ADDR_CONTROLLER,
-                protocol.ADDR_SENDER_C,
-                protocol.ADDR_SENDER_L1,
+                protocol.ADDR_SENDER_AIRBRAKE,
+                protocol.ADDR_SENDER_PAYLOAD,
             ]
 
-            response = bench.execute("rotate 10 local sender-c sender-l1", now=1.0)
+            response = bench.execute("rotate 10 local airbrake payload", now=1.0)
             bench._stop_cycle()
             pipe.sources_set.clear()
             bench._rotate_once(0, sources, now=1.0)
@@ -732,13 +732,13 @@ class ControllerMainAdapterTests(unittest.TestCase):
 
         self.assertEqual(
             response,
-            "OK rotating main/PIP every 10s: local sender-c(0x12) sender-l1(0x13)",
+            "OK rotating main/PIP every 10s: local airbrake(0x12) payload(0x13)",
         )
         self.assertEqual(sources_set, [
-            (1, protocol.ADDR_SENDER_C),
-            (0, protocol.ADDR_SENDER_C),
-            (1, protocol.ADDR_SENDER_L1),
-            (0, protocol.ADDR_SENDER_L1),
+            (1, protocol.ADDR_SENDER_AIRBRAKE),
+            (0, protocol.ADDR_SENDER_AIRBRAKE),
+            (1, protocol.ADDR_SENDER_PAYLOAD),
+            (0, protocol.ADDR_SENDER_PAYLOAD),
             (1, protocol.ADDR_CONTROLLER),
         ])
 

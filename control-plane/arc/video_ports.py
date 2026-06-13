@@ -17,10 +17,9 @@ def video_port_for_sender(sender_addr: int) -> int:
     """
 
     if sender_addr not in {
-        protocol.ADDR_SENDER_N,
-        protocol.ADDR_SENDER_C,
-        protocol.ADDR_SENDER_L1,
-        protocol.ADDR_SENDER_L2,
+        protocol.ADDR_SENDER_DOWN,
+        protocol.ADDR_SENDER_AIRBRAKE,
+        protocol.ADDR_SENDER_PAYLOAD,
         protocol.ADDR_SENDER_GROUND,
     }:
         raise ValueError(f"not an ARC Sender address: 0x{sender_addr:02x}")

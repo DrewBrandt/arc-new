@@ -1,0 +1,56 @@
+// hub_links.h
+// The hub's direct UART spokes. Each link does COBS framing over a Teensy
+// HardwareSerial and is registered with the arc_router as a forwarding link.
+//
+// The data radio is NOT one of these: it is TX-only and speaks a proprietary
+// protocol, so it lives in data_radio.{h,cpp} with its own router send_fn.
+
+#ifndef HUB_LINKS_H
+#define HUB_LINKS_H
+
+#include <Arduino.h>
+#include "arc_protocol.h"
+
+// Direct ARC UART spokes, in router-registration order.
+enum HubLinkId {
+    HUB_LINK_PI5 = 0,    // pi-5-nose / Controller + off-nosecone gateway
+    HUB_LINK_FC,         // FC-N
+    HUB_LINK_POWER,      // ARCH-Mega-N
+    HUB_LINK_RADIO_CMD,  // command radio
+    HUB_LINK_COUNT
+};
+
+struct HubLink {
+    const char*     name;
+    HardwareSerial* serial;
+    uint8_t         rx[ARC_MAX_ENCODED_SIZE + 4];
+    size_t          rx_len;
+    uint32_t        last_rx_ms;
+    uint32_t        tx_count;
+    uint32_t        rx_count;
+};
+
+// Open all spoke UARTs at the configured baud.
+void hub_links_begin(void);
+
+HubLink* hub_links_get(HubLinkId id);
+const char* hub_links_name(HubLinkId id);
+
+// True if a frame was received on this link within timeout_ms.
+bool hub_links_online(HubLinkId id, uint32_t now_ms, uint32_t timeout_ms);
+
+// Pull COBS bytes off one link's UART. When a full frame is decoded it is
+// written into `out` (capacity `cap`) and the decoded length is returned.
+// Returns 0 when no complete frame is ready yet, or a negative arc_result_t
+// on a COBS error (the partial buffer is reset in that case).
+int hub_link_read(HubLinkId id, uint8_t* out, size_t cap, uint32_t now_ms);
+
+// arc_router link send_fn: COBS-encode `frame` and write it to the UART that
+// `user` (a HubLink*) points at.
+void hub_link_send(void* user, const arc_frame_t* frame);
+
+// Write an already-built, unencoded frame to every UART spoke (used for the
+// hub's broadcast heartbeat). COBS encoding is applied per link.
+void hub_links_broadcast(const uint8_t* frame, int frame_len);
+
+#endif  // HUB_LINKS_H

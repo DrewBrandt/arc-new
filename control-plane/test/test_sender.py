@@ -13,7 +13,7 @@ class CapturingLink:
         self.sent.append(frame)
 
 
-def make_sender(addr: int = p.ADDR_SENDER_C, paired_fc: int | None = p.ADDR_FC_C) -> tuple[Sender, CapturingLink]:
+def make_sender(addr: int = p.ADDR_SENDER_AIRBRAKE, paired_fc: int | None = p.ADDR_FC_C) -> tuple[Sender, CapturingLink]:
     controller_link = CapturingLink()
     fc_link: Link | None = CapturingLink() if paired_fc is not None else None
     links: dict[str, Link] = {"controller": controller_link}
@@ -71,7 +71,7 @@ class SenderTests(unittest.TestCase):
         sender, _ = make_sender()
         cmd = p.Frame(
             src=p.ADDR_CONTROLLER,
-            dst=p.ADDR_SENDER_C,
+            dst=p.ADDR_SENDER_AIRBRAKE,
             flags=0,
             session=1,
             seq=0,
@@ -105,7 +105,7 @@ class SenderTests(unittest.TestCase):
         controller_link = CapturingLink()
         fc_link = CapturingLink()
         sender = Sender(
-            addr=p.ADDR_SENDER_C,
+            addr=p.ADDR_SENDER_AIRBRAKE,
             paired_fc=p.ADDR_FC_C,
             links={"controller": controller_link, "uart-fc": fc_link},
             session=2,
@@ -145,7 +145,7 @@ class SenderTests(unittest.TestCase):
 def _video_command(video_type: messages.VideoType, payload: bytes = b"") -> p.Frame:
     return p.Frame(
         src=p.ADDR_CONTROLLER,
-        dst=p.ADDR_SENDER_C,
+        dst=p.ADDR_SENDER_AIRBRAKE,
         flags=0,
         session=1,
         seq=0,

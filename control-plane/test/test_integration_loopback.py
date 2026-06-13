@@ -12,8 +12,8 @@ The flow exercised here:
 2. The Sender's periodic heartbeat reaches the Controller, which marks
    it ``ONLINE`` in PeerHealth.
 3. A bench-server client (over a second loopback TCP socket) issues
-   ``source 1 sender-c``.
-4. The Controller's SourceSwitcher resolves the slot to Sender-C, drives
+   ``source 1 airbrake``.
+4. The Controller's SourceSwitcher resolves the slot to airbrake, drives
    the (fake) Controller pipeline, and issues a VIDEO START_STREAM frame
    addressed to the Sender.
 5. The frame traverses the same TCP link in reverse and lands at the
@@ -155,8 +155,8 @@ def _build_controller_cfg(*, listen_port: int, sender_ip: str) -> ControllerConf
         listen_port=listen_port,
         senders=(
             SenderEntry(
-                addr=protocol.ADDR_SENDER_C,
-                name="sender-c",
+                addr=protocol.ADDR_SENDER_AIRBRAKE,
+                name="airbrake",
                 ip=sender_ip,
                 paired_fc=None,
             ),
@@ -182,8 +182,8 @@ def _build_controller_cfg(*, listen_port: int, sender_ip: str) -> ControllerConf
 
 def _build_sender_cfg(*, controller_ip: str, controller_port: int) -> SenderConfig:
     return SenderConfig(
-        addr=protocol.ADDR_SENDER_C,
-        name="sender-c",
+        addr=protocol.ADDR_SENDER_AIRBRAKE,
+        name="airbrake",
         paired_fc=None,
         controller_ip=controller_ip,
         controller_port=controller_port,
@@ -249,11 +249,11 @@ class LoopbackIntegrationTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(controller_pipeline.started)
 
             # Heartbeats need to round-trip before the Controller will
-            # treat sender-c as online. Probe via the bench `status`
-            # command; retry until "sender-c" shows up in the online list.
+            # treat airbrake as online. Probe via the bench `status`
+            # command; retry until "airbrake" shows up in the online list.
             async def sender_visible_online() -> bool:
                 reply = await _bench_command("127.0.0.1", bench_port, "status")
-                return "online" in reply and "sender-c" in reply
+                return "online" in reply and "airbrake" in reply
 
             async def poll_online() -> None:
                 while not await sender_visible_online():
@@ -264,13 +264,13 @@ class LoopbackIntegrationTest(unittest.IsolatedAsyncioTestCase):
             # Drive a SET_SOURCE through the bench server, then watch
             # both pipelines react.
             reply = await _bench_command(
-                "127.0.0.1", bench_port, "source 1 sender-c"
+                "127.0.0.1", bench_port, "source 1 airbrake"
             )
             self.assertIn("OK", reply)
 
             await _wait_until(
                 lambda: any(
-                    call == (1, protocol.ADDR_SENDER_C)
+                    call == (1, protocol.ADDR_SENDER_AIRBRAKE)
                     for call in controller_pipeline.source_calls
                 ),
                 timeout=2.0,

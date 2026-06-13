@@ -2,6 +2,19 @@
 
 Python control-plane code for the ARC Controller and Sender processes.
 
+## Topology
+
+Inside the nosecone, a **Teensy 4.1 hub** (`teensy-hub`, address `0x05`) is the
+central router: the FC, the ARCH-Mega power board, and the two rocket radios
+are all spokes on it. The Pi 5 Controller (`pi-5-nose`, `0x10`) composites
+video and is the WiFi gateway for everything off the nosecone. Camera Senders
+are named by location: `down` (`0x11`, nose cam pointing down), `airbrake`
+(`0x12`), `payload` (`0x13`), and `ground` (`0x15`). The two rocket radios are
+`radio-cmd` (`0x20`, ARC command/status) and `radio-data` (`0x22`, a
+proprietary live-data downlink the hub transcodes). See
+`com-protocol/src/arc_protocol.h` for the full address map and the hub firmware
+in `tools/teensy-hub/`.
+
 ## Layout
 
 ```
@@ -50,10 +63,10 @@ Bench video controls without an FC:
 
 ```
 python -m arc.controller_cli status
-python -m arc.controller_cli source 1 sender-c
-python -m arc.controller_cli source 1 sender-l1
-python -m arc.controller_cli cycle 1 5 sender-c sender-l1
-python -m arc.controller_cli rotate 5 local sender-c sender-l1
+python -m arc.controller_cli source 1 airbrake
+python -m arc.controller_cli source 1 payload
+python -m arc.controller_cli cycle 1 5 airbrake payload
+python -m arc.controller_cli rotate 5 local airbrake payload
 python -m arc.controller_cli stop-cycle
 python -m arc.controller_cli layout split
 ```
@@ -70,11 +83,10 @@ python -m arc.sender_main --config /etc/arc/sender.toml
 ```
 
 Remote Sender video uses deterministic Controller UDP/RTP ports derived
-from the Sender address: Sender-N `0x11 -> 5011`, Sender-C `0x12 -> 5012`,
-Sender-L1 `0x13 -> 5013`, Sender-L2 `0x14 -> 5014`, and Sender-GND
-`0x15 -> 5015`. The Sender pipeline derives its `udpsink` port from its
-own address; the Controller derives each `udpsrc` port from the selected
-source address.
+from the Sender address: `down` `0x11 -> 5011`, `airbrake` `0x12 -> 5012`,
+`payload` `0x13 -> 5013`, and `ground` `0x15 -> 5015` (`0x14` is retired).
+The Sender pipeline derives its `udpsink` port from its own address; the
+Controller derives each `udpsrc` port from the selected source address.
 
 ## Config
 
@@ -116,12 +128,12 @@ slot_1 = 0x12
 
 [[senders]]
 id = 0x12
-name = "sender-c"
+name = "airbrake"
 ip = "arcpi2.local"
 paired_fc = 0x03
 ```
 
-The Controller starts in split/PIP mode. If Sender-C is not online yet,
+The Controller starts in split/PIP mode. If `airbrake` is not online yet,
 slot 1 stays black; once the sender is observed on the control plane, the
 Controller starts its stream and rebuilds slot 1 to `udpsrc port=5012`.
 
@@ -130,7 +142,7 @@ The setup script generates a Zero 2 W-friendly Sender config similar to:
 ```toml
 [node]
 address = 0x12
-name = "sender-c"
+name = "airbrake"
 paired_fc = 0x03
 
 [controller]
@@ -161,7 +173,7 @@ Controller config with an explicit sender list:
 
 ```bash
 sudo ./setup.sh controller --force-config \
-  --senders "0x12:sender-c:arcpi2.local:0x03,0x13:sender-l1:arcpi3.local:0x04"
+  --senders "0x12:airbrake:arcpi2.local:0x03,0x13:payload:arcpi3.local:0x04"
 ```
 
 Then reboot the Controller. Without `--force-config`, setup preserves the
@@ -181,12 +193,12 @@ existing `/etc/arc/controller.toml`.
   Zero 2 W senders can join them reliably. This also keeps a Pi 5 controller
   on the 2.4 GHz copy of the ARC lab SSID; it is a per-profile setting, not a
   global radio disable.
-- Sender video uses RTP/H.264 over UDP on deterministic ports: Sender-C
+- Sender video uses RTP/H.264 over UDP on deterministic ports: airbrake
   (`0x12`) sends to Controller UDP port `5012`.
 - Bench source switching is available on the Controller with
-  `python -m arc.controller_cli source 1 sender-c` or
-  `python -m arc.controller_cli cycle 1 5 sender-c sender-l1`.
-  Use `python -m arc.controller_cli rotate 5 local sender-c sender-l1`
+  `python -m arc.controller_cli source 1 airbrake` or
+  `python -m arc.controller_cli cycle 1 5 airbrake payload`.
+  Use `python -m arc.controller_cli rotate 5 local airbrake payload`
   to rotate three pictures through main, offscreen/rest, and PIP. Rotation
   uses the Controller's selector switch mode, which keeps the KMS/compositor
   pipeline running and flips active input-selector pads instead of rebuilding

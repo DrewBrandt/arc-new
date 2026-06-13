@@ -8,8 +8,8 @@
 #   sudo ./setup.sh sender       # for the camera/sender Pis
 #
 # Useful options:
-#   sudo ./setup.sh sender --addr 0x12 --name sender-c --paired-fc 0x03
-#   sudo ./setup.sh controller --senders "0x12:sender-c:arcpi2.local:0x03,0x13:sender-l1:arcpi3.local:0x04"
+#   sudo ./setup.sh sender --addr 0x12 --name airbrake --paired-fc 0x03
+#   sudo ./setup.sh controller --senders "0x12:airbrake:arcpi2.local:0x03,0x13:payload:arcpi3.local:0x04"
 #
 # Run as root.
 
@@ -38,7 +38,7 @@ CONTROLLER_HOST="arcpi1.local"
 
 # Default Controller fleet. Override with --senders for your actual bench.
 # Format: addr:name:host:paired_fc, where paired_fc may be empty.
-CONTROLLER_SENDERS="0x12:sender-c:arcpi2.local:0x03,0x13:sender-l1:arcpi3.local:0x04,0x14:sender-l2:arcpi4.local:,0x15:sender-ground:arcpi5.local:"
+CONTROLLER_SENDERS="0x12:airbrake:arcpi2.local:0x03,0x13:payload:arcpi3.local:0x04,0x15:ground:arcpi5.local:"
 CONTROLLER_VIDEO_SINK="kmssink sync=false"
 
 SENDER_ADDR=""
@@ -75,7 +75,7 @@ Controller options:
 
 Sender options:
   --addr ADDR             Sender ARC address, e.g. 0x12
-  --name NAME             Sender name, e.g. sender-c
+  --name NAME             Sender name, e.g. airbrake
   --paired-fc ADDR        Paired FC address, e.g. 0x03. Use "none" for video-only.
   --controller-host HOST  Controller mDNS host (default: arcpi1.local)
 
@@ -309,10 +309,10 @@ enable_composite_video() {
         echo "dtoverlay=${overlay},composite" >> "$CONFIG_TXT"
     fi
 
-    if ! grep -qw "vc4.tv_norm=" "$CMDLINE_TXT"; then
+    if ! grep -Eq '(^|[[:space:]])vc4\.tv_norm=' "$CMDLINE_TXT"; then
         sed -i 's/$/ vc4.tv_norm=NTSC/' "$CMDLINE_TXT"
     fi
-    if ! grep -qw "video=Composite-1:" "$CMDLINE_TXT"; then
+    if ! grep -Eq '(^|[[:space:]])video=Composite-1:' "$CMDLINE_TXT"; then
         sed -i 's/$/ video=Composite-1:720x480i,tv_mode=NTSC/' "$CMDLINE_TXT"
     fi
 }
@@ -422,17 +422,17 @@ infer_sender_addr_from_hostname() {
 
 sender_name_for_addr() {
     case "$1" in
-        0x11|17) printf 'sender-n' ;;
-        0x12|18) printf 'sender-c' ;;
-        0x13|19) printf 'sender-l1' ;;
-        0x14|20) printf 'sender-l2' ;;
-        0x15|21) printf 'sender-ground' ;;
+        0x11|17) printf 'down' ;;
+        0x12|18) printf 'airbrake' ;;
+        0x13|19) printf 'payload' ;;
+        0x15|21) printf 'ground' ;;
         *) printf 'sender-%s' "$1" ;;
     esac
 }
 
 default_paired_fc_for_addr() {
     case "$1" in
+        0x11|17) printf '0x02' ;;
         0x12|18) printf '0x03' ;;
         0x13|19) printf '0x04' ;;
         *) printf '' ;;

@@ -406,11 +406,10 @@ def make_fc_video_handler(
 
 def _sender_route_name(addr: int) -> str:
     aliases = {
-        protocol.ADDR_SENDER_N: "sender-n",
-        protocol.ADDR_SENDER_C: "sender-c",
-        protocol.ADDR_SENDER_L1: "sender-l1",
-        protocol.ADDR_SENDER_L2: "sender-l2",
-        protocol.ADDR_SENDER_GROUND: "sender-ground",
+        protocol.ADDR_SENDER_DOWN: "down",
+        protocol.ADDR_SENDER_AIRBRAKE: "airbrake",
+        protocol.ADDR_SENDER_PAYLOAD: "payload",
+        protocol.ADDR_SENDER_GROUND: "ground",
     }
     return aliases.get(addr, f"sender-0x{addr:02x}")
 

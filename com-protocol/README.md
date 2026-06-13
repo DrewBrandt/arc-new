@@ -31,7 +31,8 @@ API for easy wrapping from Python via cffi or ctypes.
   Receivers reset dedup state when SESSION changes.
 - `SEQ` (2 bytes, big-endian) - sequence number, scoped to the
   (SRC, DST, SESSION) tuple.
-- `FAMILY` (1 byte) - protocol family (NETMGMT, FC_COORD, VIDEO, FC_VIDEO).
+- `FAMILY` (1 byte) - protocol family (NETMGMT, FC_COORD, VIDEO, FC_VIDEO,
+  RADIO, POWER).
 - `TYPE` (1 byte) - message type within the family.
 - `PAYLOAD` - variable, up to 241 bytes.
 - `CRC` (2 bytes, big-endian) - CRC-16/CCITT-FALSE over LEN through end-of-payload.

@@ -38,9 +38,9 @@ class MessageTests(unittest.TestCase):
         self.assertEqual(m.SetLayout.decode(msg.encode()), msg)
 
     def test_fc_video_set_source_round_trip(self):
-        msg = m.SetSource(slot_id=1, sender_addr=p.ADDR_SENDER_L1)
+        msg = m.SetSource(slot_id=1, sender_addr=p.ADDR_SENDER_PAYLOAD)
 
-        self.assertEqual(msg.encode(), bytes((1, p.ADDR_SENDER_L1)))
+        self.assertEqual(msg.encode(), bytes((1, p.ADDR_SENDER_PAYLOAD)))
         self.assertEqual(m.SetSource.decode(msg.encode()), msg)
 
     def test_fc_video_set_overlay_round_trip(self):
@@ -51,18 +51,18 @@ class MessageTests(unittest.TestCase):
 
     def test_fc_video_status_report_round_trip(self):
         msg = m.FcVideoStatusReport(
-            slots=(p.ADDR_CONTROLLER, p.ADDR_SENDER_C),
+            slots=(p.ADDR_CONTROLLER, p.ADDR_SENDER_AIRBRAKE),
             senders=(
-                m.FcVideoSenderStatus(addr=p.ADDR_SENDER_N, flags=m.FC_VIDEO_STATUS_FLAG_ONLINE),
+                m.FcVideoSenderStatus(addr=p.ADDR_SENDER_DOWN, flags=m.FC_VIDEO_STATUS_FLAG_ONLINE),
                 m.FcVideoSenderStatus(
-                    addr=p.ADDR_SENDER_C,
+                    addr=p.ADDR_SENDER_AIRBRAKE,
                     flags=(
                         m.FC_VIDEO_STATUS_FLAG_ONLINE
                         | m.FC_VIDEO_STATUS_FLAG_TRANSMITTING
                         | m.FC_VIDEO_STATUS_FLAG_RECORDING
                     ),
                 ),
-                m.FcVideoSenderStatus(addr=p.ADDR_SENDER_L1, flags=0),
+                m.FcVideoSenderStatus(addr=p.ADDR_SENDER_PAYLOAD, flags=0),
             ),
         )
 
@@ -71,11 +71,11 @@ class MessageTests(unittest.TestCase):
         self.assertEqual(
             encoded,
             bytes((
-                2, p.ADDR_CONTROLLER, p.ADDR_SENDER_C,
+                2, p.ADDR_CONTROLLER, p.ADDR_SENDER_AIRBRAKE,
                 3,
-                p.ADDR_SENDER_N, 0x01,
-                p.ADDR_SENDER_C, 0x07,
-                p.ADDR_SENDER_L1, 0x00,
+                p.ADDR_SENDER_DOWN, 0x01,
+                p.ADDR_SENDER_AIRBRAKE, 0x07,
+                p.ADDR_SENDER_PAYLOAD, 0x00,
             )),
         )
         self.assertEqual(m.FcVideoStatusReport.decode(encoded), msg)
@@ -93,7 +93,7 @@ class MessageTests(unittest.TestCase):
     def test_fc_video_status_report_rejects_reserved_flag_bits(self):
         msg = m.FcVideoStatusReport(
             slots=(),
-            senders=(m.FcVideoSenderStatus(addr=p.ADDR_SENDER_C, flags=0x80),),
+            senders=(m.FcVideoSenderStatus(addr=p.ADDR_SENDER_AIRBRAKE, flags=0x80),),
         )
         with self.assertRaises(m.MessageError):
             msg.encode()
@@ -182,7 +182,7 @@ class MessageTests(unittest.TestCase):
     def test_decode_frame_payload_for_radio_and_power(self):
         radio_frame = p.Frame(
             src=p.ADDR_FC_N,
-            dst=p.ADDR_RADIO_R,
+            dst=p.ADDR_RADIO_CMD,
             flags=p.FLAG_RELIABLE,
             session=1,
             seq=4,
@@ -257,7 +257,7 @@ class MessageTests(unittest.TestCase):
     def test_decode_frame_payload_for_known_families(self):
         video = p.Frame(
             src=p.ADDR_CONTROLLER,
-            dst=p.ADDR_SENDER_C,
+            dst=p.ADDR_SENDER_AIRBRAKE,
             flags=p.FLAG_RELIABLE,
             session=1,
             seq=1,
@@ -273,7 +273,7 @@ class MessageTests(unittest.TestCase):
             seq=2,
             family=p.FAMILY_FC_VIDEO,
             type=m.FcVideoType.SET_SOURCE,
-            payload=m.SetSource(1, p.ADDR_SENDER_C).encode(),
+            payload=m.SetSource(1, p.ADDR_SENDER_AIRBRAKE).encode(),
         )
         fc_coord = p.Frame(
             src=p.ADDR_FC_C,
@@ -287,7 +287,7 @@ class MessageTests(unittest.TestCase):
         )
 
         self.assertEqual(m.decode_frame_payload(video), m.SetBitrate(1_000_000))
-        self.assertEqual(m.decode_frame_payload(fc_video), m.SetSource(1, p.ADDR_SENDER_C))
+        self.assertEqual(m.decode_frame_payload(fc_video), m.SetSource(1, p.ADDR_SENDER_AIRBRAKE))
         self.assertEqual(m.decode_frame_payload(fc_coord), b"opaque")
 
     def test_unknown_type_or_family_rejected(self):

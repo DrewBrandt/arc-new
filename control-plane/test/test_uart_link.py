@@ -16,7 +16,7 @@ from arc.uart_link import (
 def sample_frame(seq=1, payload=b"hello"):
     return p.Frame(
         src=p.ADDR_FC_C,
-        dst=p.ADDR_SENDER_C,
+        dst=p.ADDR_SENDER_AIRBRAKE,
         flags=p.FLAG_RELIABLE,
         session=4,
         seq=seq,
@@ -130,7 +130,7 @@ class QueuedUartLinkTests(unittest.IsolatedAsyncioTestCase):
             first_seq=0x100,
         )
         b_node = Node(
-            addr=p.ADDR_SENDER_C,
+            addr=p.ADDR_SENDER_AIRBRAKE,
             routes={p.ADDR_FC_C: "peer"},
             session=9,
         )
@@ -146,7 +146,7 @@ class QueuedUartLinkTests(unittest.IsolatedAsyncioTestCase):
         try:
             await _wait_until(lambda: a_link.online and b_link.online)
             sent = a_node.send_local(
-                dst=p.ADDR_SENDER_C,
+                dst=p.ADDR_SENDER_AIRBRAKE,
                 family=p.FAMILY_FC_COORD,
                 type=0x05,
                 payload=b"telemetry",

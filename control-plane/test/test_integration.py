@@ -17,13 +17,13 @@ from arc.sender import Sender
 class IntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_controller_commands_sender_and_receives_status(self):
         controller = Controller(
-            sender_addrs=(p.ADDR_SENDER_C,),
+            sender_addrs=(p.ADDR_SENDER_AIRBRAKE,),
             session=10,
             heartbeat_interval_s=10.0,  # avoid noise in this test
             peer_timeout_s=10.0,
         )
         sender = Sender(
-            addr=p.ADDR_SENDER_C,
+            addr=p.ADDR_SENDER_AIRBRAKE,
             paired_fc=None,
             controller_addr=p.ADDR_CONTROLLER,
             session=20,
@@ -34,7 +34,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         controller_to_sender = QueuedTcpLink(
             lambda f: controller.receive(f, _loop_now())
         )
-        controller.set_links({"sender-c": controller_to_sender})
+        controller.set_links({"airbrake": controller_to_sender})
 
         sender_to_controller = QueuedTcpLink(
             lambda f: sender.receive(f, _loop_now())
@@ -62,7 +62,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
                 lambda: controller_to_sender.online and sender_to_controller.online
             )
 
-            controller.start_sender(p.ADDR_SENDER_C, now=_loop_now())
+            controller.start_sender(p.ADDR_SENDER_AIRBRAKE, now=_loop_now())
             await _wait_until(lambda: sender.transmitting)
             await _wait_until(
                 lambda: controller.node.reliable.pending_count == 0
@@ -79,12 +79,12 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
             )
             sender.report_status(report, now=_loop_now())
             await _wait_until(
-                lambda: controller.sender(p.ADDR_SENDER_C).last_status is not None
+                lambda: controller.sender(p.ADDR_SENDER_AIRBRAKE).last_status is not None
             )
             self.assertEqual(
-                controller.sender(p.ADDR_SENDER_C).last_status.report, report
+                controller.sender(p.ADDR_SENDER_AIRBRAKE).last_status.report, report
             )
-            self.assertTrue(controller.health.is_online(p.ADDR_SENDER_C))
+            self.assertTrue(controller.health.is_online(p.ADDR_SENDER_AIRBRAKE))
             self.assertTrue(sender.health.is_online(p.ADDR_CONTROLLER))
         finally:
             stop_event.set()

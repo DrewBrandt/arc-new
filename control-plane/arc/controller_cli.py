@@ -54,7 +54,7 @@ def main() -> None:
 
     source = sub.add_parser("source", help="Set a compositor slot source")
     source.add_argument("slot", type=int)
-    source.add_argument("source", help="empty, local, 0x12, sender-c, sender-l1, ...")
+    source.add_argument("source", help="empty, local, 0x12, airbrake, payload, ...")
 
     cycle = sub.add_parser("cycle", help="Loop a slot across sources")
     cycle.add_argument("slot", type=int)

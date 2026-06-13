@@ -298,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
     ``python -m arc.pipeline_sender --config /etc/arc/sender.toml`` builds
     the pipeline and immediately enters the *streaming* state. Verify
     the manual deliverable by watching for RTP/H.264 packets at the
-    Controller's per-Sender UDP port -- e.g. Sender-C (0x12) uses 5012::
+    Controller's per-Sender UDP port -- e.g. airbrake (0x12) uses 5012::
 
         gst-launch-1.0 udpsrc port=5012 caps='application/x-rtp,encoding-name=H264,payload=96' \\
             ! rtpjitterbuffer ! rtph264depay ! avdec_h264 ! autovideosink sync=false

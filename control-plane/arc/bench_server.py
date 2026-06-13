@@ -112,7 +112,7 @@ class BenchCommandServer:
             "commands: status | layout NAME_OR_INDEX | source SLOT SOURCE | "
             "cycle SLOT INTERVAL_SECONDS SOURCE... | "
             "rotate INTERVAL_SECONDS SOURCE... | stop-cycle\n"
-            "sources: empty/off, local/controller, 0x12, sender-c, sender-l1, ..."
+            "sources: empty/off, local/controller, 0x12, airbrake, payload, ..."
         )
 
     def _status(self) -> str:
@@ -235,7 +235,7 @@ class BenchCommandServer:
         normalized = value.lower()
         if normalized in ("empty", "off", "none", "black", "0"):
             return EMPTY_SOURCE
-        if normalized in ("local", "controller", "camera"):
+        if normalized in ("local", "controller", "camera", "pi-5-nose", "main-tube"):
             return LOCAL_SOURCE
         if normalized in self.sender_names:
             return self.sender_names[normalized]

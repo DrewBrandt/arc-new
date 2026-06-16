@@ -79,6 +79,16 @@ Controller process:
 python -m arc.controller_main --config /etc/arc/controller.toml
 ```
 
+Interactive Pi setup helper:
+
+```
+python3 ../setup_wizard.py
+```
+
+The helper asks plain-English questions for the Controller/Sender setup
+options, prints the generated `setup.sh` command, and asks before running it.
+Use `python3 ../setup_wizard.py --dry-run` to preview the command only.
+
 Bench video controls without an FC:
 
 ```

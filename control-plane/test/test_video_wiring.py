@@ -632,6 +632,20 @@ class ControllerMainAdapterTests(unittest.TestCase):
         self.assertEqual(pipe.overlays_set, [])
         self.assertEqual(pipe.sources_set, [])
 
+    def test_get_layouts_without_controller_is_logged_no_pipeline_call(self):
+        pipe = FakeControllerPipeline()
+        handler = make_fc_video_handler(pipe, ["local_full", "split"])
+        layouts_frame = _frame(
+            src=0,
+            dst=0,
+            family=protocol.FAMILY_FC_VIDEO,
+            type=messages.FcVideoType.GET_LAYOUTS,
+        )
+        handler(messages.FcVideoType.GET_LAYOUTS, layouts_frame)
+        self.assertEqual(pipe.layouts_set, [])
+        self.assertEqual(pipe.overlays_set, [])
+        self.assertEqual(pipe.sources_set, [])
+
     def test_bench_command_server_sets_source_by_sender_name(self):
         pipe = FakeControllerPipeline()
         c_link = FakeLink()

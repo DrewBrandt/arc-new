@@ -395,6 +395,21 @@ def make_fc_video_handler(
                     reliable=True,
                     now=now(),
                 )
+            elif fc_video_type is messages.FcVideoType.GET_LAYOUTS:
+                if controller is None:
+                    log.info(
+                        "GET_LAYOUTS request received with no controller wired in"
+                    )
+                    return
+                layouts_report = messages.LayoutsReport(names=tuple(layout_names))
+                controller.node.send_local(
+                    dst=frame.src if frame.src != 0 else fc_n_addr,
+                    family=protocol.FAMILY_FC_VIDEO,
+                    type=messages.FcVideoType.LAYOUTS_REPORT,
+                    payload=layouts_report.encode(),
+                    reliable=True,
+                    now=now(),
+                )
         except PipelineError:
             log.exception(
                 "pipeline failed to apply FC_VIDEO command %s",

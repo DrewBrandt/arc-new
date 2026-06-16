@@ -1,7 +1,7 @@
 import unittest
 
-from arc import protocol as p
-from arc.reliable import ReliableEndpoint
+from arc_protocol import protocol as p
+from arc_protocol.reliable import ReliableEndpoint
 
 
 class ReliableEndpointTests(unittest.TestCase):

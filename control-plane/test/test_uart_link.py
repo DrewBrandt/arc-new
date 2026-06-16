@@ -2,7 +2,7 @@ import asyncio
 import unittest
 from contextlib import suppress
 
-from arc import protocol as p
+from arc_protocol import protocol as p
 from arc.node import Node
 from arc.uart_link import (
     DELIMITER,

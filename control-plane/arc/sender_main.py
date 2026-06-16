@@ -21,7 +21,7 @@ import logging
 import signal
 from pathlib import Path
 
-from arc import messages, protocol
+from arc_protocol import messages, protocol
 from arc.config import SenderConfig, load_sender_config
 from arc.pipeline_sender import PipelineError, SenderPipeline
 from arc.runtime import (
@@ -94,12 +94,16 @@ async def run(
         video_command_handler=video_handler,
     )
 
-    controller_link = QueuedTcpLink(lambda f: sender.receive(f, _now()))
+    controller_link = QueuedTcpLink(
+        lambda f: sender.receive(f, _now(), ingress="controller")
+    )
     links = {"controller": controller_link}
 
     fc_link: QueuedUartLink | None = None
     if cfg.paired_fc is not None and cfg.uart is not None:
-        fc_link = QueuedUartLink(lambda f: sender.receive(f, _now()))
+        fc_link = QueuedUartLink(
+            lambda f: sender.receive(f, _now(), ingress="uart-fc")
+        )
         links["uart-fc"] = fc_link
 
     sender.set_links(links)

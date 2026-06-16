@@ -1,9 +1,9 @@
 import unittest
 
-from arc import protocol as p
+from arc_protocol import protocol as p
 from arc.health import Heartbeat, PeerHealth
 from arc.node import Node
-from arc.router import Link
+from arc_protocol.router import Link
 
 
 class CapturingLink:

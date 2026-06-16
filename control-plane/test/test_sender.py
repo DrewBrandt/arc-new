@@ -1,7 +1,7 @@
 import unittest
 
-from arc import messages, protocol as p
-from arc.router import Link
+from arc_protocol import messages, protocol as p
+from arc_protocol.router import Link
 from arc.sender import Sender, SenderError
 
 

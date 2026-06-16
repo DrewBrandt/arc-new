@@ -8,7 +8,7 @@ import asyncio
 import unittest
 from contextlib import suppress
 
-from arc import messages, protocol as p
+from arc_protocol import messages, protocol as p
 from arc.controller import Controller
 from arc.runtime import QueuedTcpLink, TcpServer, run_tick_loop
 from arc.sender import Sender

@@ -1,8 +1,8 @@
 import unittest
 
-from arc import protocol as p
+from arc_protocol import protocol as p
 from arc.node import Node
-from arc.router import controller_routes, sender_routes
+from arc_protocol.router import controller_routes, sender_routes
 
 
 class DirectLink:

@@ -1,0 +1,8 @@
+# ARC control-plane dependencies.  Install with:  pip install -r requirements.txt
+#
+# Shared wire-format library (framing/COBS/CRC, router, reliable transport,
+# message catalogs). Pinned to a commit; bump to adopt protocol changes.
+arc-protocol @ git+https://github.com/DrewBrandt/arc-protocol.git@bd6402612296493e94cc8927cab93c2bdb5eb573#subdirectory=python
+
+# Runtime-only: UART/serial links on the Pi (imported lazily; tests don't need it).
+pyserial-asyncio

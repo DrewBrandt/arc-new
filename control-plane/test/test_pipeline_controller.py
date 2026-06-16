@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import unittest
 
-from arc import protocol
+from arc_protocol import protocol
 from arc.config import ControllerConfig, ControllerVideoConfig, SenderEntry, UartConfig
 from arc.pipeline_controller import (
     ControllerPipeline,

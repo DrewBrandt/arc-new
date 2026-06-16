@@ -13,7 +13,7 @@ import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
 
-from arc import protocol
+from arc_protocol import protocol
 from arc.tcp_link import QueuedTcpLink, read_frame as tcp_read_frame, write_frame as tcp_write_frame
 from arc.uart_link import QueuedUartLink
 

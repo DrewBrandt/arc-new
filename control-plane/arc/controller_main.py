@@ -31,7 +31,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from arc import messages, protocol
+from arc_protocol import messages, protocol
 from arc.bench_server import (
     BENCH_CONTROL_HOST,
     BENCH_CONTROL_PORT,
@@ -500,10 +500,14 @@ async def run(
     )
 
     # Build links: UART for FC-N, one TCP link per Sender keyed by route name.
-    fc_uart = QueuedUartLink(lambda f: controller.receive(f, _now()))
+    fc_uart = QueuedUartLink(
+        lambda f: controller.receive(f, _now(), ingress="uart-fc-n")
+    )
     tcp_links_by_route = {
         _sender_route_name(addr): QueuedTcpLink(
-            lambda f, _addr=addr: controller.receive(f, _now())
+            lambda f, _route=_sender_route_name(addr): controller.receive(
+                f, _now(), ingress=_route
+            )
         )
         for addr in (s.addr for s in cfg.senders)
     }

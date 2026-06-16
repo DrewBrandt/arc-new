@@ -1,7 +1,7 @@
 import unittest
 
-from arc import messages as m
-from arc import protocol as p
+from arc_protocol import messages as m
+from arc_protocol import protocol as p
 from arc.controller import Controller, ControllerError
 
 

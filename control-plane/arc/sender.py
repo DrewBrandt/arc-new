@@ -11,11 +11,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Callable
 
-from arc import messages, protocol
+from arc_protocol import messages, protocol
 from arc.health import Heartbeat, PeerHealth
 from arc.node import Node
-from arc.router import Link
-from arc.router import sender_routes
+from arc_protocol.router import Link
+from arc_protocol.router import sender_routes
 
 
 VideoCommandHandler = Callable[["messages.VideoType", protocol.Frame], None]
@@ -76,12 +76,18 @@ class Sender:
     def set_links(self, links: Mapping[str, Link]) -> None:
         self.node.set_links(links)
 
-    def receive(self, frame: protocol.Frame, now: float = 0.0) -> None:
+    def receive(
+        self,
+        frame: protocol.Frame,
+        now: float = 0.0,
+        *,
+        ingress: str | None = None,
+    ) -> None:
         """Route an inbound frame; handle anything delivered locally."""
 
         self.health.observe(frame, now=now)
         before = len(self.node.inbox)
-        self.node.receive(frame)
+        self.node.receive(frame, ingress=ingress, now=now)
         for delivered in self.node.inbox[before:]:
             self._handle_local_frame(delivered, now=now)
 

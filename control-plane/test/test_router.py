@@ -1,7 +1,7 @@
 import unittest
 
-from arc import protocol as p
-from arc.router import RouteError, Router, controller_routes, sender_routes
+from arc_protocol import protocol as p
+from arc_protocol.router import RouteError, Router, controller_routes, sender_routes
 
 
 class FakeLink:

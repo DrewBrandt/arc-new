@@ -29,7 +29,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from arc import protocol
+from arc_protocol import protocol
 from arc.config import ControllerConfig
 from arc.pipeline_errors import PipelineError
 from arc.video_ports import video_port_for_sender

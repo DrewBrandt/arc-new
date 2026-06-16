@@ -11,18 +11,20 @@ video and is the WiFi gateway for everything off the nosecone. Camera Senders
 are named by location: `down` (`0x11`, nose cam pointing down), `airbrake`
 (`0x12`), `payload` (`0x13`), and `ground` (`0x15`). The two rocket radios are
 `radio-cmd` (`0x20`, ARC command/status) and `radio-data` (`0x22`, a
-proprietary live-data downlink the hub transcodes). See
-`com-protocol/src/arc_protocol.h` for the full address map and the hub firmware
-in `tools/teensy-hub/`.
+proprietary live-data downlink the hub transcodes). See the
+[`arc-protocol`](https://github.com/DrewBrandt/arc-protocol) library
+(`src/arc_protocol.h`) for the full address map, and the hub firmware in
+`tools/teensy-hub/`.
 
 ## Layout
 
 ```
-arc/protocol.py        frame build/parse, COBS, CRC, address/family constants
-arc/messages.py        typed NETMGMT, VIDEO, and FC_VIDEO payload helpers
-arc/router.py          static route lookup and local/forward dispatch
-arc/reliable.py        per-endpoint ACK/retry/dedup state machine
+# Wire-format primitives (frame build/parse, COBS/CRC, address/family
+# constants, typed message helpers, the static router, and the reliable
+# ACK/retry transport) now live in the separate arc-protocol package,
+# imported as `arc_protocol`. See Dependencies.
 arc/health.py          heartbeat emitter + peer-online tracker
+arc/learned_router.py  static routing plus source-address learning
 arc/node.py            in-memory composition harness for flow tests
 arc/tcp_link.py        asyncio TCP LEN-prefixed frame transport
 arc/uart_link.py       asyncio UART/serial COBS frame transport
@@ -44,6 +46,24 @@ arc/controller_main.py Controller process entrypoint
 arc/sender_main.py     Sender process entrypoint
 test/                  stdlib unittest tests
 ```
+
+## Pi Routing Behavior
+
+The Pi control plane keeps the existing static route tables, but live traffic
+now learns source routes the same way the Teensy hub does. When a frame from
+address `A` arrives on link `X`, later frames addressed to `A` prefer `X` for
+10 seconds. If the learned route ages out, routing falls back to the static map
+or default route.
+
+On the Pi 5 Controller, `/dev/serial0` is named `uart-fc-n`, and each Sender TCP
+link is named by sender role (`airbrake`, `payload`, `ground`, etc.). On a
+Sender Pi, the Controller TCP link is `controller` and the paired FC UART is
+`uart-fc`. Broadcast frames are delivered locally and forwarded to every link
+except the link they arrived on.
+
+This means the bench path can be forgiving: a node can announce itself with a
+heartbeat/status frame first, and the Pi will know which link to use for replies
+even if the physical port mapping changes.
 
 ## Running
 
@@ -212,6 +232,9 @@ existing `/etc/arc/controller.toml`.
 ## Dependencies
 
 - Python 3.11+ (uses `tomllib`)
+- [`arc-protocol`](https://github.com/DrewBrandt/arc-protocol) — the shared
+  wire-format library, imported as `arc_protocol`. Install it (pinned) with
+  `pip install -r requirements.txt`.
 - `pyserial-asyncio` for UART links (imported lazily; tests don't require it)
 
 GStreamer is wired into the orchestrators on a best-effort basis:

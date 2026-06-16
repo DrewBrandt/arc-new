@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable, Mapping
 
-from arc import protocol
+from arc_protocol import protocol
 from arc.controller import Controller
 
 

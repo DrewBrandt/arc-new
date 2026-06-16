@@ -1,6 +1,6 @@
 import unittest
 
-from arc import protocol as p
+from arc_protocol import protocol as p
 
 
 VECTORS = [

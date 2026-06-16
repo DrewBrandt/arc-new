@@ -1,16 +1,17 @@
-"""Small in-memory node harness for control-plane tests."""
+"""Small ARC node harness for control-plane tests and process wiring."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 
-from arc import protocol
-from arc.reliable import ReliableEndpoint
-from arc.router import Link, Router
+from arc_protocol import protocol
+from arc_protocol.reliable import ReliableEndpoint
+from arc.learned_router import LearnedRouter
+from arc_protocol.router import Link
 
 
 class Node:
-    """Compose routing and reliability for one ARC node.
+    """Compose learned/static routing and reliability for one ARC node.
 
     This is intentionally transport-free. Real TCP/UART code can later supply
     Link implementations with the same send(frame) shape used by the tests.
@@ -30,7 +31,8 @@ class Node:
         self.addr = addr
         self.inbox: list[protocol.Frame] = []
         self.failed: list[protocol.Frame] = []
-        self.router = Router(
+        self._route_now = 0.0
+        self.router = LearnedRouter(
             my_addr=addr,
             routes=routes,
             links=links or {},
@@ -61,25 +63,45 @@ class Node:
         flags: int = 0,
         now: float = 0.0,
     ) -> protocol.Frame:
-        return self.reliable.send(
-            dst=dst,
-            family=family,
-            type=type,
-            payload=payload,
-            reliable=reliable,
-            flags=flags,
-            now=now,
-        )
+        previous = self._route_now
+        self._route_now = now
+        try:
+            return self.reliable.send(
+                dst=dst,
+                family=family,
+                type=type,
+                payload=payload,
+                reliable=reliable,
+                flags=flags,
+                now=now,
+            )
+        finally:
+            self._route_now = previous
 
-    def receive(self, frame: protocol.Frame) -> None:
-        self.router.route(frame)
+    def receive(
+        self,
+        frame: protocol.Frame,
+        *,
+        ingress: str | None = None,
+        now: float = 0.0,
+    ) -> None:
+        previous = self._route_now
+        self._route_now = now
+        try:
+            self.router.route(frame, ingress=ingress, now=now)
+        finally:
+            self._route_now = previous
 
     def tick(self, now: float) -> None:
-        self.reliable.tick(now)
+        previous = self._route_now
+        self._route_now = now
+        try:
+            self.reliable.tick(now)
+        finally:
+            self._route_now = previous
 
     def _receive_local(self, frame: protocol.Frame) -> None:
         self.reliable.receive(frame)
 
     def _send_from_reliable(self, frame: protocol.Frame) -> None:
-        self.router.route(frame)
-
+        self.router.route(frame, now=self._route_now)

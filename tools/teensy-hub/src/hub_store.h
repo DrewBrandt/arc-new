@@ -31,8 +31,13 @@ extern "C" {
 
 typedef struct {
     uint32_t t_ms;
+    int8_t   in_link;
+    int8_t   out_link;
+    int16_t  route_result;
     uint8_t  src;
     uint8_t  dst;
+    uint8_t  flags;
+    uint8_t  session;
     uint8_t  family;
     uint8_t  type;
     uint8_t  len;
@@ -43,7 +48,8 @@ void hub_store_init(uint32_t now_ms);
 
 // Record one parsed frame seen on any link. Updates ring, counters, the
 // per-source last-seen table, and (if HUB_SD_LOG) appends to the SD log.
-void hub_store_record(const arc_frame_t* f, uint32_t now_ms);
+void hub_store_record(const arc_frame_t* f, uint32_t now_ms,
+                      int8_t in_link, int8_t out_link, int route_result);
 
 // Note a decode/parse failure on a link.
 void hub_store_note_error(void);

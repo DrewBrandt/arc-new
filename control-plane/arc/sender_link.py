@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from arc import messages, protocol
+from arc_protocol import messages, protocol
 
 
 SendCommand = Callable[

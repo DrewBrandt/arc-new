@@ -1,6 +1,7 @@
 // hub_store.cpp -- see hub_store.h.
 
 #include "hub_store.h"
+#include "hub_map.h"
 
 #include <string.h>
 
@@ -78,24 +79,65 @@ static void roll_window(uint32_t now_ms) {
 }
 
 #ifdef HUB_SD_LOG
-static void sd_log(const hub_frame_rec_t* rec) {
+static void print_hex2(File& f, uint8_t v) {
+    if (v < 0x10) f.print('0');
+    f.print(v, HEX);
+}
+
+static const char* link_name_for_log(int8_t link) {
+    return hub_route_link_name((HubRouteLink)link);
+}
+
+static void sd_log(const hub_frame_rec_t* rec, const arc_frame_t* frame) {
     if (!g_sd_ok) return;
     File f = SD.open("arc_hub.log", FILE_WRITE);
     if (!f) return;
-    f.printf("%lu,%02x,%02x,%02x,%02x,%u,%u\n",
-             (unsigned long)rec->t_ms, rec->src, rec->dst,
-             rec->family, rec->type, rec->len, rec->seq);
+
+    f.print((unsigned long)rec->t_ms);
+    f.print(',');
+    f.print(link_name_for_log(rec->in_link));
+    f.print(',');
+    f.print(link_name_for_log(rec->out_link));
+    f.print(',');
+    f.print(rec->route_result);
+    f.print(',');
+    print_hex2(f, rec->src);
+    f.print(',');
+    print_hex2(f, rec->dst);
+    f.print(',');
+    print_hex2(f, rec->flags);
+    f.print(',');
+    f.print(rec->session);
+    f.print(',');
+    f.print(rec->seq);
+    f.print(',');
+    print_hex2(f, rec->family);
+    f.print(',');
+    print_hex2(f, rec->type);
+    f.print(',');
+    f.print(rec->len);
+    f.print(',');
+    for (uint8_t i = 0; i < frame->payload_len; i++) {
+        print_hex2(f, frame->payload[i]);
+    }
+    f.println();
     f.close();
 }
 #endif
 
-void hub_store_record(const arc_frame_t* f, uint32_t now_ms) {
+void hub_store_record(const arc_frame_t* f, uint32_t now_ms,
+                      int8_t in_link, int8_t out_link, int route_result) {
     if (!f) return;
 
     hub_frame_rec_t* rec = &g_ring[g_ring_head];
     rec->t_ms = now_ms;
+    rec->in_link = in_link;
+    rec->out_link = out_link;
+    rec->route_result = (int16_t)route_result;
     rec->src = f->src;
     rec->dst = f->dst;
+    rec->flags = f->flags;
+    rec->session = f->session;
     rec->family = f->family;
     rec->type = f->type;
     rec->len = f->payload_len;
@@ -108,10 +150,12 @@ void hub_store_record(const arc_frame_t* f, uint32_t now_ms) {
     roll_window(now_ms);
     g_window_count++;
 
-    note_peer(f->src, now_ms);
+    if (f->src != ARC_ADDR_TEENSY_HUB) {
+        note_peer(f->src, now_ms);
+    }
 
 #ifdef HUB_SD_LOG
-    sd_log(rec);
+    sd_log(rec, f);
 #endif
 }
 

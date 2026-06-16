@@ -30,7 +30,7 @@ import asyncio
 import socket
 import unittest
 
-from arc import protocol
+from arc_protocol import protocol
 from arc.config import (
     ControllerConfig,
     ControllerVideoConfig,

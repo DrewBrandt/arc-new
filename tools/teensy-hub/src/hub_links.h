@@ -11,12 +11,17 @@
 #include <Arduino.h>
 #include "arc_protocol.h"
 
-// Direct ARC UART spokes, in router-registration order.
+// Direct ARC UART spokes, in physical-slot order. Device identity is learned
+// from ARC source addresses, not implied by this enum.
 enum HubLinkId {
-    HUB_LINK_PI5 = 0,    // pi-5-nose / Controller + off-nosecone gateway
-    HUB_LINK_FC,         // FC-N
-    HUB_LINK_POWER,      // ARCH-Mega-N
-    HUB_LINK_RADIO_CMD,  // command radio
+    HUB_LINK_SPOKE1 = 0,
+    HUB_LINK_SPOKE2,
+    HUB_LINK_SPOKE3,
+    HUB_LINK_SPOKE4,
+    HUB_LINK_SPOKE5,
+    HUB_LINK_SPOKE6,
+    HUB_LINK_SPOKE7,
+    HUB_LINK_SPOKE8,
     HUB_LINK_COUNT
 };
 
@@ -52,5 +57,10 @@ void hub_link_send(void* user, const arc_frame_t* frame);
 // Write an already-built, unencoded frame to every UART spoke (used for the
 // hub's broadcast heartbeat). COBS encoding is applied per link.
 void hub_links_broadcast(const uint8_t* frame, int frame_len);
+
+// Broadcast to every UART spoke except `except_id`. Pass HUB_LINK_COUNT to send
+// to all spokes.
+void hub_links_broadcast_except(const uint8_t* frame, int frame_len,
+                                HubLinkId except_id);
 
 #endif  // HUB_LINKS_H

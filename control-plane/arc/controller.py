@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Callable
 
-from arc import messages, protocol
+from arc_protocol import messages, protocol
 from arc.health import Heartbeat, PeerHealth
 from arc.node import Node
-from arc.router import Link, controller_routes
+from arc_protocol.router import Link, controller_routes
 from arc.sender_link import SenderLink, SenderLinkError
 
 
@@ -71,12 +71,18 @@ class Controller:
     def set_links(self, links: Mapping[str, Link]) -> None:
         self.node.set_links(links)
 
-    def receive(self, frame: protocol.Frame, now: float = 0.0) -> None:
+    def receive(
+        self,
+        frame: protocol.Frame,
+        now: float = 0.0,
+        *,
+        ingress: str | None = None,
+    ) -> None:
         """Route an incoming frame and handle any resulting local deliveries."""
 
         self.health.observe(frame, now=now)
         before = len(self.node.inbox)
-        self.node.receive(frame)
+        self.node.receive(frame, ingress=ingress, now=now)
         for delivered in self.node.inbox[before:]:
             self._handle_local_frame(delivered, now=now)
         if not self.retain_local_history:

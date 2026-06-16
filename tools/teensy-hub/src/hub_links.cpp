@@ -6,10 +6,14 @@
 static HubLink g_links[HUB_LINK_COUNT];
 
 void hub_links_begin(void) {
-    g_links[HUB_LINK_PI5]       = HubLink{"pi-5-nose", &HUB_SERIAL_PI5,       {}, 0, 0, 0, 0};
-    g_links[HUB_LINK_FC]        = HubLink{"fc-n",       &HUB_SERIAL_FC,        {}, 0, 0, 0, 0};
-    g_links[HUB_LINK_POWER]     = HubLink{"power",      &HUB_SERIAL_POWER,     {}, 0, 0, 0, 0};
-    g_links[HUB_LINK_RADIO_CMD] = HubLink{"radio-cmd",  &HUB_SERIAL_RADIO_CMD, {}, 0, 0, 0, 0};
+    g_links[HUB_LINK_SPOKE1] = HubLink{"serial1", &HUB_SERIAL_SPOKE1, {}, 0, 0, 0, 0};
+    g_links[HUB_LINK_SPOKE2] = HubLink{"serial2", &HUB_SERIAL_SPOKE2, {}, 0, 0, 0, 0};
+    g_links[HUB_LINK_SPOKE3] = HubLink{"serial3", &HUB_SERIAL_SPOKE3, {}, 0, 0, 0, 0};
+    g_links[HUB_LINK_SPOKE4] = HubLink{"serial4", &HUB_SERIAL_SPOKE4, {}, 0, 0, 0, 0};
+    g_links[HUB_LINK_SPOKE5] = HubLink{"serial5", &HUB_SERIAL_SPOKE5, {}, 0, 0, 0, 0};
+    g_links[HUB_LINK_SPOKE6] = HubLink{"serial6", &HUB_SERIAL_SPOKE6, {}, 0, 0, 0, 0};
+    g_links[HUB_LINK_SPOKE7] = HubLink{"serial7", &HUB_SERIAL_SPOKE7, {}, 0, 0, 0, 0};
+    g_links[HUB_LINK_SPOKE8] = HubLink{"serial8", &HUB_SERIAL_SPOKE8, {}, 0, 0, 0, 0};
 
     for (int i = 0; i < HUB_LINK_COUNT; i++) {
         g_links[i].serial->begin(HUB_LINK_BAUD);
@@ -84,11 +88,17 @@ void hub_link_send(void* user, const arc_frame_t* frame) {
 }
 
 void hub_links_broadcast(const uint8_t* frame, int frame_len) {
+    hub_links_broadcast_except(frame, frame_len, HUB_LINK_COUNT);
+}
+
+void hub_links_broadcast_except(const uint8_t* frame, int frame_len,
+                                HubLinkId except_id) {
     if (!frame || frame_len <= 0) return;
     uint8_t enc[ARC_MAX_ENCODED_SIZE];
     int m = arc_cobs_encode(frame, (size_t)frame_len, enc, sizeof(enc));
     if (m < 0) return;
     for (int i = 0; i < HUB_LINK_COUNT; i++) {
+        if ((HubLinkId)i == except_id) continue;
         g_links[i].serial->write(enc, (size_t)m);
         g_links[i].tx_count++;
     }

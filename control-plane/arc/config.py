@@ -20,7 +20,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from arc import protocol
+from arc_protocol import protocol
 
 
 class ConfigError(ValueError):

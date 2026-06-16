@@ -22,7 +22,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 
-from arc import protocol
+from arc_protocol import protocol
 
 
 FrameHandler = Callable[[protocol.Frame], None | Awaitable[None]]

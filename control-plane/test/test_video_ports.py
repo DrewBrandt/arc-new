@@ -1,6 +1,6 @@
 import unittest
 
-from arc import protocol
+from arc_protocol import protocol
 from arc.video_ports import video_port_for_sender
 
 

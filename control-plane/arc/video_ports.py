@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from arc import protocol
+from arc_protocol import protocol
 
 
 VIDEO_PORT_PREFIX = 50

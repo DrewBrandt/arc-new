@@ -19,7 +19,7 @@ import unittest
 from dataclasses import dataclass
 from typing import Any
 
-from arc import messages, protocol
+from arc_protocol import messages, protocol
 from arc.controller import Controller, ControllerError
 from arc.controller_main import BenchCommandServer, SourceSwitcher, make_fc_video_handler
 from arc.pipeline_sender import PipelineError

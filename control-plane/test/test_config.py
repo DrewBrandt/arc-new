@@ -3,7 +3,7 @@ import textwrap
 import unittest
 from pathlib import Path
 
-from arc import protocol as p
+from arc_protocol import protocol as p
 from arc.config import (
     ConfigError,
     ControllerConfig,

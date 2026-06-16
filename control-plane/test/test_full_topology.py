@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import unittest
 
-from arc import messages, protocol as p
+from arc_protocol import messages, protocol as p
 from arc.controller import Controller
 from arc.controller_main import (
     SourceSwitcher,

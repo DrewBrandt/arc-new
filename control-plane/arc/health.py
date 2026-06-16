@@ -14,8 +14,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
-from arc import protocol
-from arc.router import RouteError
+from arc_protocol import protocol
+from arc_protocol.router import RouteError
 
 
 SendFrame = Callable[

@@ -1,7 +1,7 @@
 import unittest
 
-from arc import messages as m
-from arc import protocol as p
+from arc_protocol import messages as m
+from arc_protocol import protocol as p
 
 
 class MessageTests(unittest.TestCase):
@@ -275,6 +275,7 @@ class MessageTests(unittest.TestCase):
             type=m.FcVideoType.SET_SOURCE,
             payload=m.SetSource(1, p.ADDR_SENDER_AIRBRAKE).encode(),
         )
+        telemetry = m.FlightTelemetry(*([0] * 17))
         fc_coord = p.Frame(
             src=p.ADDR_FC_C,
             dst=p.ADDR_FC_N,
@@ -282,13 +283,13 @@ class MessageTests(unittest.TestCase):
             session=1,
             seq=3,
             family=p.FAMILY_FC_COORD,
-            type=0x99,
-            payload=b"opaque",
+            type=m.FcCoordType.FLIGHT_TELEMETRY,
+            payload=telemetry.encode(),
         )
 
         self.assertEqual(m.decode_frame_payload(video), m.SetBitrate(1_000_000))
         self.assertEqual(m.decode_frame_payload(fc_video), m.SetSource(1, p.ADDR_SENDER_AIRBRAKE))
-        self.assertEqual(m.decode_frame_payload(fc_coord), b"opaque")
+        self.assertEqual(m.decode_frame_payload(fc_coord), telemetry)
 
     def test_unknown_type_or_family_rejected(self):
         with self.assertRaises(ValueError):

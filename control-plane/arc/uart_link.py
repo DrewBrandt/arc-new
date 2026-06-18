@@ -19,6 +19,7 @@ in-memory streams; production code wires pyserial-asyncio's
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 
@@ -28,6 +29,7 @@ from arc_protocol import protocol
 FrameHandler = Callable[[protocol.Frame], None | Awaitable[None]]
 
 DELIMITER = b"\x00"
+log = logging.getLogger(__name__)
 
 
 class UartFrameLink:
@@ -86,6 +88,8 @@ class QueuedUartLink:
         self.online = False
         self.dropped = 0
         self.bad_frames = 0
+        self.disconnects = 0
+        self.last_disconnect_reason = ""
         self._stopping = False
         self._writer: asyncio.StreamWriter | None = None
 
@@ -102,15 +106,29 @@ class QueuedUartLink:
     ) -> None:
         self._writer = writer
         self.online = True
+        self.last_disconnect_reason = ""
         tx_task = asyncio.create_task(self._tx_loop(writer))
         rx_task = asyncio.create_task(self._rx_loop(reader))
+        reason = "link stopped"
         try:
-            await asyncio.wait(
+            done, _pending = await asyncio.wait(
                 {tx_task, rx_task},
                 return_when=asyncio.FIRST_COMPLETED,
             )
+            for task in done:
+                try:
+                    task.result()
+                except asyncio.CancelledError:
+                    reason = "task cancelled"
+                except Exception as exc:
+                    reason = f"{type(exc).__name__}: {exc}"
+                    log.warning("UART task exited: %s", reason)
+                else:
+                    reason = "task completed"
         finally:
             self.online = False
+            self.disconnects += 1
+            self.last_disconnect_reason = reason
             for task in (tx_task, rx_task):
                 if not task.done():
                     task.cancel()
@@ -179,5 +197,10 @@ async def read_frame(reader: asyncio.StreamReader) -> protocol.Frame | None:
 
 
 async def _wait_closed_quietly(writer: asyncio.StreamWriter) -> None:
-    with suppress(OSError, ConnectionError, TimeoutError):
+    try:
         await asyncio.wait_for(writer.wait_closed(), timeout=0.2)
+    except (OSError, ConnectionError, TimeoutError, asyncio.TimeoutError):
+        transport = getattr(writer, "transport", None)
+        if transport is not None:
+            with suppress(OSError, RuntimeError):
+                transport.abort()

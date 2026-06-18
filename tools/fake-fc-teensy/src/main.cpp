@@ -528,8 +528,10 @@ static void cmd_help() {
 
 static void cmd_heartbeat() {
   uint16_t seq = 0;
-  if (send_frame(0, ARC_FAMILY_NETMGMT, ARC_NETMGMT_HEARTBEAT, nullptr, 0, &seq, "heartbeat")) {
-    Serial.print(F("TX -> 0x")); print_hex(CONTROLLER_ADDR);
+  // Heartbeats are broadcast so any neighbor learns this node's addr + link.
+  if (send_frame_to(active_port(), ARC_ADDR_BROADCAST, 0, ARC_FAMILY_NETMGMT,
+                    ARC_NETMGMT_HEARTBEAT, nullptr, 0, &seq, "heartbeat")) {
+    Serial.print(F("TX -> 0x")); print_hex(ARC_ADDR_BROADCAST);
     Serial.print(F(" [NETMGMT HEARTBEAT] seq=")); Serial.println(seq);
   }
 }
@@ -1155,7 +1157,7 @@ static void maybe_heartbeat(FakePort* port) {
   if (now - port->last_heartbeat_ms < HEARTBEAT_INTERVAL_MS) return;
   port->last_heartbeat_ms = now;
   uint16_t seq = 0;
-  send_frame_to(port, CONTROLLER_ADDR, 0, ARC_FAMILY_NETMGMT, ARC_NETMGMT_HEARTBEAT, nullptr, 0, &seq, "auto-hb");
+  send_frame_to(port, ARC_ADDR_BROADCAST, 0, ARC_FAMILY_NETMGMT, ARC_NETMGMT_HEARTBEAT, nullptr, 0, &seq, "auto-hb");
 }
 
 static void maybe_telemetry(FakePort* port) {

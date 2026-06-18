@@ -124,6 +124,66 @@ class SenderTests(unittest.TestCase):
         self.assertEqual(fc_link.sent, [frame])
         self.assertEqual(controller_link.sent, [])
 
+    def test_get_info_replies_with_info_report(self):
+        controller_link = CapturingLink()
+        sender = Sender(
+            addr=p.ADDR_SENDER_AIRBRAKE,
+            paired_fc=p.ADDR_FC_C,
+            links={"controller": controller_link, "uart-fc": CapturingLink()},
+            name="airbrake-cam",
+        )
+        sender.receive(_video_command(messages.VideoType.GET_INFO), now=7.0)
+
+        self.assertEqual(len(controller_link.sent), 1)
+        reply = controller_link.sent[0]
+        self.assertEqual(reply.family, p.FAMILY_VIDEO)
+        self.assertEqual(reply.type, messages.VideoType.INFO_REPORT)
+        self.assertEqual(reply.dst, p.ADDR_CONTROLLER)
+        info = messages.VideoInfoReport.decode(reply.payload)
+        self.assertEqual(info.name, "airbrake-cam")
+        self.assertEqual(info.paired_fc, p.ADDR_FC_C)
+
+    def test_get_info_does_not_change_stream_state(self):
+        sender, _ = make_sender()
+        sender.receive(_video_command(messages.VideoType.START_STREAM))
+        sender.receive(_video_command(messages.VideoType.GET_INFO))
+        # GET_INFO must leave transmit/record untouched.
+        self.assertTrue(sender.transmitting)
+        self.assertTrue(sender.recording)
+
+    def test_unpaired_sender_reports_no_paired_fc(self):
+        controller_link = CapturingLink()
+        sender = Sender(
+            addr=p.ADDR_SENDER_DOWN,
+            paired_fc=None,
+            links={"controller": controller_link},
+            name="down-cam",
+        )
+        sender.receive(
+            p.Frame(
+                src=p.ADDR_CONTROLLER,
+                dst=p.ADDR_SENDER_DOWN,
+                flags=0,
+                session=1,
+                seq=0,
+                family=p.FAMILY_VIDEO,
+                type=messages.VideoType.GET_INFO,
+                payload=b"",
+            )
+        )
+        info = messages.VideoInfoReport.decode(controller_link.sent[0].payload)
+        self.assertEqual(info.name, "down-cam")
+        self.assertEqual(info.paired_fc, p.ADDR_UNASSIGNED)
+
+    def test_sender_receiving_info_report_raises(self):
+        sender, _ = make_sender()
+        bad = _video_command(
+            messages.VideoType.INFO_REPORT,
+            payload=messages.VideoInfoReport(name="x").encode(),
+        )
+        with self.assertRaises(SenderError):
+            sender.receive(bad)
+
     def test_unknown_dst_routes_to_controller_via_default(self):
         # No paired FC: any non-local destination falls through default
         # route "controller".

@@ -9,11 +9,15 @@ class VideoPortTests(unittest.TestCase):
         self.assertEqual(video_port_for_sender(protocol.ADDR_SENDER_DOWN), 5011)
         self.assertEqual(video_port_for_sender(protocol.ADDR_SENDER_AIRBRAKE), 5012)
         self.assertEqual(video_port_for_sender(protocol.ADDR_SENDER_PAYLOAD), 5013)
+        self.assertEqual(video_port_for_sender(0x14), 5014)
         self.assertEqual(video_port_for_sender(protocol.ADDR_SENDER_GROUND), 5015)
+        self.assertEqual(video_port_for_sender(0x19), 5019)
 
     def test_non_sender_address_rejected(self):
         with self.assertRaises(ValueError):
             video_port_for_sender(protocol.ADDR_CONTROLLER)
+        with self.assertRaises(ValueError):
+            video_port_for_sender(0x1A)
 
 
 if __name__ == "__main__":

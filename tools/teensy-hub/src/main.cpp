@@ -10,6 +10,8 @@
 //     link with a standalone heartbeat.
 //   * Store everything passing through (hub_store) and surface a quick-look
 //     status on the OLED.
+//   * Mirror inbound ARC payload bytes to the fixed external non-ARC telemetry
+//     radio on Serial1.
 //
 // USB serial is a debug console: press Enter for a one-line status dump.
 
@@ -40,6 +42,7 @@ static uint16_t g_seq = 0;  // seq for unreliable hub-originated frames
 static uint32_t g_last_heartbeat_ms = 0;
 static uint32_t g_last_status_print_ms = 0;
 static uint32_t g_last_discovery_ms = 0;
+static uint32_t g_status_led_off_ms = 0;
 
 struct LearnedRoute {
     bool         in_use;
@@ -57,6 +60,26 @@ static constexpr uint32_t HUB_DISCOVERY_THROTTLE_MS = 500;
 static LearnedRoute g_learned[HUB_LEARNED_ROUTE_MAX];
 static uint8_t g_heartbeat_seen[HUB_HEARTBEAT_SEEN_MAX];
 static uint8_t g_heartbeat_seen_count = 0;
+
+// ----------------------------------------------------------------------
+// Status LED
+// ----------------------------------------------------------------------
+static void status_led_begin(void) {
+    pinMode(HUB_STATUS_LED_PIN, OUTPUT);
+    digitalWrite(HUB_STATUS_LED_PIN, LOW);
+}
+
+static void status_led_pulse(uint32_t now) {
+    digitalWrite(HUB_STATUS_LED_PIN, HIGH);
+    g_status_led_off_ms = now + HUB_STATUS_LED_PULSE_MS;
+}
+
+static void status_led_tick(uint32_t now) {
+    if (g_status_led_off_ms != 0 && (int32_t)(now - g_status_led_off_ms) >= 0) {
+        digitalWrite(HUB_STATUS_LED_PIN, LOW);
+        g_status_led_off_ms = 0;
+    }
+}
 
 // ----------------------------------------------------------------------
 // Router / reliable glue
@@ -343,20 +366,40 @@ static void maybe_heartbeat(uint32_t now) {
 // ----------------------------------------------------------------------
 // RX: pull frames off every spoke, record them, route them.
 // ----------------------------------------------------------------------
+static void write_non_arc_to_usb(HubLinkId id, const uint8_t* data, size_t len) {
+    (void)id;
+    if (!data || len == 0) return;
+    Serial.write(data, len);
+}
+
 static void pump_links(uint32_t now) {
     uint8_t decoded[ARC_MAX_FRAME_SIZE];
+    uint8_t non_arc[ARC_MAX_ENCODED_SIZE + 4];
     for (int id = 0; id < HUB_LINK_COUNT; id++) {
         int n;
         while ((n = hub_link_read((HubLinkId)id, decoded, sizeof(decoded), now)) != 0) {
+            if (n == HUB_LINK_READ_NON_ARC) {
+                size_t len = hub_link_take_non_arc((HubLinkId)id, non_arc, sizeof(non_arc));
+                if (len > 0) {
+                    status_led_pulse(now);
+                    write_non_arc_to_usb((HubLinkId)id, non_arc, len);
+                }
+                hub_store_note_error();
+                continue;
+            }
             if (n < 0) {  // COBS error
                 hub_store_note_error();
                 continue;
             }
             arc_frame_t f;
             if (arc_frame_parse(decoded, n, &f) == ARC_OK) {
+                status_led_pulse(now);
                 learn_source_route(&f, (int8_t)id, now);
+                data_radio_emit(&f);
                 route_frame(&f, now, (int8_t)id);
             } else {
+                status_led_pulse(now);
+                write_non_arc_to_usb((HubLinkId)id, decoded, (size_t)n);
                 hub_store_note_error();
             }
         }
@@ -431,12 +474,31 @@ static void print_learned_routes(uint32_t now) {
     if (!any) Serial.println(F("  (none)"));
 }
 
+// Addresses heard heartbeating since the last hub heartbeat -- i.e. exactly the
+// peer list that the next coalesced hub heartbeat will carry down to ground.
+static void print_heartbeat_seen(void) {
+    Serial.print(F("[hub] heartbeat-seen (next coalesced payload): count="));
+    Serial.println(g_heartbeat_seen_count);
+    for (uint8_t i = 0; i < g_heartbeat_seen_count; i++) {
+        uint8_t addr = g_heartbeat_seen[i];
+        Serial.print(F("  0x"));
+        if (addr < 0x10) Serial.print('0');
+        Serial.print(addr, HEX);
+        Serial.print(F(" "));
+        Serial.println(hub_addr_name(addr));
+    }
+    if (g_heartbeat_seen_count == 0) {
+        Serial.println(F("  (none -- no node heartbeats heard this interval)"));
+    }
+}
+
 static void pump_usb(uint32_t now) {
     while (Serial.available()) {
         int c = Serial.read();
         if (c == '\n' || c == '\r') print_status(now);
         if (c == 'm' || c == 'M') hub_map_print(Serial);
         if (c == 'l' || c == 'L') print_learned_routes(now);
+        if (c == 'h' || c == 'H') print_heartbeat_seen();
         if (c == 'i' || c == 'I') hub_oled_scan_i2c(Serial);
         if (c == 'o' || c == 'O') {
             Serial.println(F("[oled] forcing test pattern for 5s"));
@@ -456,6 +518,7 @@ void setup() {
     randomSeed(analogRead(A0) ^ micros());
     g_session = (uint8_t)random(1, 256);
 
+    status_led_begin();
     hub_links_begin();
     data_radio_begin();
     hub_store_init(millis());
@@ -471,13 +534,14 @@ void setup() {
     Serial.print(HUB_ADDR, HEX);
     Serial.print(F(" | session=")); Serial.print(g_session);
     Serial.print(F(" | oled=")); Serial.println(oled_ok ? F("ok") : F("absent"));
-    Serial.println(F("press Enter=status, m=route map, l=learned, i=i2c scan, o=oled test"));
+    Serial.println(F("press Enter=status, m=route map, l=learned, h=heartbeat-seen, i=i2c scan, o=oled test"));
     hub_map_print(Serial);
 }
 
 void loop() {
     uint32_t now = millis();
     pump_links(now);
+    status_led_tick(now);
     arc_reliable_tick(&g_reliable, now);
     maybe_heartbeat(now);
     hub_oled_tick(now);

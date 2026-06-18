@@ -37,8 +37,12 @@ except ImportError:  # pragma: no cover - lets protocol tests run without BLE de
 LOCAL_ARC_PROTOCOL = Path(__file__).resolve().parents[2] / "arc-protocol" / "python"
 if LOCAL_ARC_PROTOCOL.exists():
     sys.path.insert(0, str(LOCAL_ARC_PROTOCOL))
+LOCAL_CONTROL_PLANE = Path(__file__).resolve().parents[1] / "control-plane"
+if LOCAL_CONTROL_PLANE.exists():
+    sys.path.insert(0, str(LOCAL_CONTROL_PLANE))
 
 from arc_protocol import protocol, messages
+from arc.fc_video_status import ControllerVideoStatus, SenderVideoSnapshot
 
 # Nordic UART Service (must match the ground radio firmware)
 NUS_SERVICE = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -78,6 +82,25 @@ ADDR_ALIASES = {
     "arch-c": protocol.ADDR_ARCH_MEGA_C,
     "power-c": protocol.ADDR_ARCH_MEGA_C,
 }
+ADDR_NAMES = {value: key for key, value in ADDR_ALIASES.items()}
+ADDR_NAMES.update(
+    {
+        protocol.ADDR_UNASSIGNED: "empty",
+        protocol.ADDR_GROUND: "Ground Station",
+        protocol.ADDR_FC_N: "FC-N",
+        protocol.ADDR_FC_C: "FC-C",
+        protocol.ADDR_FC_L: "FC-L",
+        protocol.ADDR_TEENSY_HUB: "Teensy Hub",
+        protocol.ADDR_CONTROLLER: "Pi Controller",
+        protocol.ADDR_SENDER_DOWN: "Down Sender",
+        protocol.ADDR_SENDER_AIRBRAKE: "Airbrake Sender",
+        protocol.ADDR_SENDER_PAYLOAD: "Payload Sender",
+        protocol.ADDR_SENDER_GROUND: "Ground Sender",
+        protocol.ADDR_RADIO_CMD: "Rocket Radio (Cmd)",
+        protocol.ADDR_RADIO_G: "Ground Radio",
+        protocol.ADDR_RADIO_DATA: "Data Radio",
+    }
+)
 
 
 class GroundStation:
@@ -111,6 +134,8 @@ class GroundStation:
         except Exception as exc:  # noqa: BLE001 - placeholder tool
             print(f"  [rx] undecodable frame ({len(cobs)} B): {exc}")
             return
+        if f.dst == MY_ADDR and f.flags & protocol.FLAG_RELIABLE:
+            self._schedule_ack(f)
         ts = time.strftime("%H:%M:%S")
         if f.family == protocol.FAMILY_NETMGMT and f.type == protocol.NETMGMT_HEARTBEAT:
             self._hb_count += 1
@@ -128,7 +153,13 @@ class GroundStation:
         else:
             detail = describe_payload(f)
             if detail:
-                print(f"  [{ts}] {detail} from 0x{f.src:02x} seq={f.seq}")
+                lines = detail.splitlines()
+                print(
+                    f"  [{ts}] {lines[0]} from {format_addr(f.src)} "
+                    f"seq={f.seq}"
+                )
+                for line in lines[1:]:
+                    print(f"          {line}")
             else:
                 print(
                     f"  [{ts}] frame src=0x{f.src:02x} dst=0x{f.dst:02x} "
@@ -146,6 +177,31 @@ class GroundStation:
         self._seq = (self._seq + 1) & 0xFFFF
         cobs = protocol.cobs_encode(frame)  # ends in the 0x00 delimiter
         await self.client.write_gatt_char(NUS_RX_WRITE, cobs, response=False)
+        return seq
+
+    def _schedule_ack(self, frame: protocol.Frame) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        loop.create_task(self._send_ack(frame))
+
+    async def _send_ack(self, frame: protocol.Frame) -> int:
+        seq = self._seq
+        ack = protocol.build_frame(
+            MY_ADDR,
+            frame.src,
+            protocol.FLAG_ACK,
+            SESSION,
+            seq,
+            protocol.FAMILY_NETMGMT,
+            protocol.NETMGMT_ACK,
+            frame.seq.to_bytes(2, "big"),
+        )
+        self._seq = (self._seq + 1) & 0xFFFF
+        await self.client.write_gatt_char(
+            NUS_RX_WRITE, protocol.cobs_encode(ack), response=False
+        )
         return seq
 
     async def send_freq(self, mhz: float):
@@ -185,6 +241,16 @@ class GroundStation:
         print(f"  <- pong 0x{ack.src:02x} seq={seq} rtt={rtt_ms:.0f}ms")
         return ack, rtt_ms
 
+    async def request_status(self):
+        seq = await self._send_frame(
+            protocol.ADDR_CONTROLLER,
+            protocol.FAMILY_FC_VIDEO,
+            int(messages.FcVideoType.GET_STATUS),
+            reliable=True,
+        )
+        print(f"  -> status request to {format_addr(protocol.ADDR_CONTROLLER)} seq={seq}")
+        return seq
+
     async def wait_for_heartbeat(self, timeout: float, after_count: int = 0):
         if self._hb_count > after_count:
             return self._last_heartbeat
@@ -205,6 +271,14 @@ class GroundStation:
 
 
 def describe_payload(f: protocol.Frame) -> str | None:
+    if (
+        f.family == protocol.FAMILY_FC_VIDEO
+        and f.type == int(messages.FcVideoType.STATUS_REPORT)
+    ):
+        try:
+            return describe_fc_video_status(ControllerVideoStatus.decode(f.payload))
+        except Exception:
+            return None
     try:
         decoded = messages.decode_frame_payload(f)
     except Exception:
@@ -249,6 +323,67 @@ def describe_payload(f: protocol.Frame) -> str | None:
             f"chg_v={decoded.charge_voltage_mv / 1000:.2f}V"
         )
     return None
+
+
+def describe_fc_video_status(status: ControllerVideoStatus) -> str:
+    layout = status.layout or "(none)"
+    desired = format_sources(status.desired_sources)
+    active = format_sources(status.active_sources)
+    online = [
+        sender
+        for sender in status.senders
+        if sender.flags & messages.FC_VIDEO_STATUS_FLAG_ONLINE
+    ]
+    lines = [
+        "FC_VIDEO STATUS",
+        f"layout={layout}",
+        f"desired={desired}",
+        f"active={active}",
+        "connected="
+        + (", ".join(format_addr(sender.addr) for sender in online) if online else "none"),
+        "senders:",
+    ]
+    for sender in status.senders:
+        parts = [format_addr(sender.addr), sender_flags(sender.flags)]
+        if sender.status is not None:
+            report = sender.status
+            parts.append(
+                "video="
+                f"state=0x{report.state:02x} "
+                f"cpu={report.cpu_temp_c}C/{report.cpu_load_pct}% "
+                f"disk={report.free_disk_mb}MB "
+                f"rssi={report.rssi_dbm}dBm "
+                f"tx={report.tx_frames} drop={report.dropped_frames}"
+            )
+        else:
+            parts.append("video=no-report")
+        lines.append("  " + " | ".join(parts))
+    return "\n".join(lines)
+
+
+def format_sources(sources: tuple[int, ...]) -> str:
+    if not sources:
+        return "(none)"
+    return ", ".join(
+        f"slot{i}={format_addr(source)}" for i, source in enumerate(sources)
+    )
+
+
+def sender_flags(flags: int) -> str:
+    bits = []
+    if flags & messages.FC_VIDEO_STATUS_FLAG_ONLINE:
+        bits.append("online")
+    else:
+        bits.append("offline")
+    if flags & messages.FC_VIDEO_STATUS_FLAG_TRANSMITTING:
+        bits.append("streaming")
+    if flags & messages.FC_VIDEO_STATUS_FLAG_RECORDING:
+        bits.append("recording")
+    return "/".join(bits)
+
+
+def format_addr(addr: int) -> str:
+    return f"{ADDR_NAMES.get(addr, f'0x{addr:02x}')} (0x{addr:02x})"
 
 
 def stage_name(stage: int) -> str:
@@ -296,7 +431,7 @@ def parse_addr(text: str) -> int:
     return value
 
 
-HELP = "commands:  ping <addr|name>   freq <MHz>   phy <0|1>   q/quit   help"
+HELP = "commands:  status   ping <addr|name>   freq <MHz>   phy <0|1>   q/quit   help"
 
 
 async def repl(gs: GroundStation):
@@ -312,6 +447,8 @@ async def repl(gs: GroundStation):
             return
         if cmd == "help":
             print(HELP)
+        elif cmd == "status" and len(parts) == 1:
+            await gs.request_status()
         elif cmd == "ping" and len(parts) in (2, 3):
             try:
                 timeout = float(parts[2]) if len(parts) == 3 else 2.0

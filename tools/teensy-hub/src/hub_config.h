@@ -6,9 +6,10 @@
 // so node addresses are learned at runtime instead of bound to fixed ports.
 //
 // ----------------------------------------------------------------------
-// UART spoke assignment (Teensy 4.1 has Serial1..Serial8)
+// UART assignment (Teensy 4.1 has Serial1..Serial8)
 // ----------------------------------------------------------------------
-//   Serial1..Serial8 -> ARC UART spokes. Device identity is learned.
+//   Serial1 -> fixed external telemetry radio, non-ARC, raw payload TX.
+//   Serial2..Serial8 -> ARC UART spokes. Device identity is learned.
 //
 // The OLED is a 0.91" SSD1306 (128x32) on I2C (Wire: SDA 18 / SCL 19) at 0x3C.
 
@@ -21,16 +22,22 @@
 static constexpr uint8_t  HUB_ADDR        = ARC_ADDR_TEENSY_HUB;  // 0x05
 static constexpr uint32_t HUB_USB_BAUD    = 115200;  // USB debug console
 static constexpr uint32_t HUB_LINK_BAUD   = 115200;  // all ARC UART spokes
+static constexpr uint32_t HUB_DATA_RADIO_BAUD = 57600;  // raw telemetry radio
+static constexpr uint8_t  HUB_STATUS_LED_PIN = 23;
+static constexpr uint32_t HUB_STATUS_LED_PULSE_MS = 40;
+static constexpr uint32_t HUB_NON_ARC_USB_IDLE_MS = 20;
 
-// ARC spoke ports. These names are physical slots, not node identities.
-#define HUB_SERIAL_SPOKE1     Serial1
-#define HUB_SERIAL_SPOKE2     Serial2
-#define HUB_SERIAL_SPOKE3     Serial3
-#define HUB_SERIAL_SPOKE4     Serial4
-#define HUB_SERIAL_SPOKE5     Serial5
-#define HUB_SERIAL_SPOKE6     Serial6
-#define HUB_SERIAL_SPOKE7     Serial7
-#define HUB_SERIAL_SPOKE8     Serial8
+// Fixed non-ARC telemetry radio port.
+#define HUB_DATA_RADIO_SERIAL Serial1
+
+// ARC spoke ports. These names are physical ARC slots, not node identities.
+#define HUB_SERIAL_SPOKE1     Serial2
+#define HUB_SERIAL_SPOKE2     Serial3
+#define HUB_SERIAL_SPOKE3     Serial4
+#define HUB_SERIAL_SPOKE4     Serial5
+#define HUB_SERIAL_SPOKE5     Serial6
+#define HUB_SERIAL_SPOKE6     Serial7
+#define HUB_SERIAL_SPOKE7     Serial8
 
 // Self-generated traffic + liveness timing.
 static constexpr uint32_t HUB_HEARTBEAT_MS = 5000;  // broadcast our heartbeat

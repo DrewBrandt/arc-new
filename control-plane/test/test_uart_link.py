@@ -50,6 +50,20 @@ class _PipeWriter:
         return None
 
 
+class _FailingWriter:
+    def write(self, _data: bytes) -> None:
+        raise OSError("serial write failed")
+
+    async def drain(self) -> None:
+        await asyncio.sleep(0)
+
+    def close(self) -> None:
+        return None
+
+    async def wait_closed(self) -> None:
+        return None
+
+
 def make_pipe() -> tuple[
     asyncio.StreamReader,
     _PipeWriter,
@@ -184,6 +198,23 @@ class QueuedUartLinkTests(unittest.IsolatedAsyncioTestCase):
         link.send(sample_frame(seq=1))
         link.send(sample_frame(seq=2))
         self.assertEqual(link.dropped, 1)
+
+    async def test_records_disconnect_reason_when_transport_task_fails(self):
+        reader = asyncio.StreamReader()
+        link = QueuedUartLink(lambda _f: None)
+
+        run_task = asyncio.create_task(link.run_connected(reader, _FailingWriter()))
+        try:
+            await _wait_until(lambda: link.online)
+            link.send(sample_frame(seq=1))
+            await _wait_until(lambda: not link.online)
+
+            self.assertEqual(link.disconnects, 1)
+            self.assertIn("OSError", link.last_disconnect_reason)
+            self.assertIn("serial write failed", link.last_disconnect_reason)
+        finally:
+            await link.stop()
+            await _quietly_finish(run_task)
 
 
 async def _wait_until(predicate, timeout=1.0):

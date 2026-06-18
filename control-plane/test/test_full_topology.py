@@ -1,4 +1,4 @@
-"""Full in-memory topology flow tests.
+﻿"""Full in-memory topology flow tests.
 
 These tests follow the system design doc's hub-and-spoke control plane:
 FCs talk UART to paired Pis, Senders talk TCP/wifi to the Controller, and
@@ -16,6 +16,7 @@ from arc.controller_main import (
     build_fc_video_status_report,
     make_fc_video_handler,
 )
+from arc.fc_video_status import ControllerVideoStatus
 from arc.node import Node
 from arc.sender import Sender
 
@@ -270,7 +271,7 @@ class FullTopologyTests(unittest.TestCase):
             dst=p.ADDR_CONTROLLER,
             family=p.FAMILY_FC_VIDEO,
             type=messages.FcVideoType.SET_OVERLAY,
-            payload=messages.SetOverlay("KD3BBP / BOOST").encode(),
+            payload=messages.SetOverlay("KD3BBD / BOOST").encode(),
             reliable=True,
             now=4.1,
         )
@@ -288,7 +289,7 @@ class FullTopologyTests(unittest.TestCase):
         self.assertIn(overlay, controller.node.inbox)
         self.assertIn(source, controller.node.inbox)
         self.assertEqual(pipeline.layouts, ["split"])
-        self.assertEqual(pipeline.overlays, ["KD3BBP / BOOST"])
+        self.assertEqual(pipeline.overlays, ["KD3BBD / BOOST"])
         self.assertEqual(pipeline.sources, [(1, p.ADDR_SENDER_PAYLOAD)])
         self.assertTrue(sender_payload.transmitting)
 
@@ -377,12 +378,16 @@ class FullTopologyTests(unittest.TestCase):
             and f.type == messages.FcVideoType.STATUS_REPORT
         ]
         self.assertEqual(len(replies), 1)
-        report = messages.FcVideoStatusReport.decode(replies[0].payload)
+        report = ControllerVideoStatus.decode(replies[0].payload)
 
         # Slot 0 is local camera; slot 1 starts empty (no SET_SOURCE issued).
         self.assertEqual(
-            report.slots, (p.ADDR_CONTROLLER, p.ADDR_UNASSIGNED)
+            report.active_sources, (p.ADDR_CONTROLLER, p.ADDR_UNASSIGNED)
         )
+        self.assertEqual(
+            report.desired_sources, (p.ADDR_CONTROLLER, p.ADDR_UNASSIGNED)
+        )
+        self.assertEqual(report.layout, "")
         flags_by_addr = {s.addr: s.flags for s in report.senders}
         self.assertEqual(set(flags_by_addr), set(sender_addrs))
         # airbrake: online + transmitting + recording

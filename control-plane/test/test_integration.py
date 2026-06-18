@@ -96,6 +96,80 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
                     await t
             await server.stop()
 
+    async def test_controller_discovers_sender_from_first_tcp_frame(self):
+        controller = Controller(
+            sender_addrs=(),
+            session=10,
+            heartbeat_interval_s=10.0,
+            peer_timeout_s=10.0,
+        )
+        sender = Sender(
+            addr=p.ADDR_SENDER_PAYLOAD,
+            paired_fc=None,
+            controller_addr=p.ADDR_CONTROLLER,
+            session=20,
+            heartbeat_interval_s=10.0,
+            peer_timeout_s=10.0,
+        )
+        links_by_addr = {}
+
+        def ensure_sender_link(frame):
+            if frame.src != p.ADDR_SENDER_PAYLOAD:
+                return None
+            route = "payload"
+            link = links_by_addr.get(frame.src)
+            if link is None:
+                link = QueuedTcpLink(
+                    lambda f: controller.receive(f, _loop_now(), ingress=route)
+                )
+                links_by_addr[frame.src] = link
+                controller.node.router.links[route] = link
+            controller.ensure_sender(frame.src, route_name=route)
+            return link
+
+        sender_to_controller = QueuedTcpLink(
+            lambda f: sender.receive(f, _loop_now())
+        )
+        sender.set_links({"controller": sender_to_controller})
+
+        server = TcpServer(
+            "127.0.0.1",
+            0,
+            link_for_peer=lambda _ip: None,
+            link_for_frame=ensure_sender_link,
+        )
+        await server.start()
+        port = server._server.sockets[0].getsockname()[1]
+
+        stop_event = asyncio.Event()
+        client_task = asyncio.create_task(
+            sender_to_controller.run_client("127.0.0.1", port)
+        )
+        sender_tick = asyncio.create_task(
+            run_tick_loop(sender.tick, interval_s=0.01, stop_event=stop_event)
+        )
+
+        try:
+            await _wait_until(lambda: p.ADDR_SENDER_PAYLOAD in controller.senders)
+            self.assertTrue(controller.health.is_online(p.ADDR_SENDER_PAYLOAD))
+            self.assertEqual(
+                controller.node.router.routes[p.ADDR_SENDER_PAYLOAD],
+                "payload",
+            )
+
+            controller.start_sender(p.ADDR_SENDER_PAYLOAD, now=_loop_now())
+            await _wait_until(lambda: sender.transmitting)
+        finally:
+            stop_event.set()
+            await sender_to_controller.stop()
+            for link in links_by_addr.values():
+                await link.stop()
+            for t in (client_task, sender_tick):
+                t.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await t
+            await server.stop()
+
 
 def _loop_now() -> float:
     return asyncio.get_running_loop().time()

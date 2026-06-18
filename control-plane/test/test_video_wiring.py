@@ -1,4 +1,4 @@
-"""Tests for the wiring between control-plane shells and the pipelines.
+﻿"""Tests for the wiring between control-plane shells and the pipelines.
 
 Covers:
 - :class:`arc.sender.Sender` invokes its ``video_command_handler`` after
@@ -21,7 +21,13 @@ from typing import Any
 
 from arc_protocol import messages, protocol
 from arc.controller import Controller, ControllerError
-from arc.controller_main import BenchCommandServer, SourceSwitcher, make_fc_video_handler
+from arc.controller_main import (
+    BenchCommandServer,
+    SourceSwitcher,
+    build_fc_video_status_report,
+    make_fc_video_handler,
+)
+from arc.fc_video_status import ControllerVideoStatus
 from arc.pipeline_sender import PipelineError
 from arc.sender import Sender
 from arc.sender_main import _apply_boot_video_command, make_video_command_handler
@@ -153,7 +159,7 @@ class ControllerFcVideoHandlerTests(unittest.TestCase):
         self._deliver(
             ctrl,
             messages.FcVideoType.SET_OVERLAY,
-            payload=b"KD3BBP test\x00",
+            payload=b"KD3BBD test\x00",
         )
         self._deliver(ctrl, messages.FcVideoType.SET_SOURCE, payload=b"\x01\x12")
         self._deliver(ctrl, messages.FcVideoType.GET_STATUS)
@@ -242,6 +248,7 @@ class FakeControllerPipeline:
     layouts_set: list[str] = None
     overlays_set: list[str] = None
     sources_set: list[tuple[int, int]] = None
+    current_layout: str | None = None
 
     def __post_init__(self):
         self.layouts_set = []
@@ -250,6 +257,7 @@ class FakeControllerPipeline:
 
     def set_layout(self, name: str) -> None:
         self.layouts_set.append(name)
+        self.current_layout = name
 
     def set_overlay(self, text: str) -> None:
         self.overlays_set.append(text)
@@ -367,10 +375,10 @@ class ControllerMainAdapterTests(unittest.TestCase):
             dst=0,
             family=protocol.FAMILY_FC_VIDEO,
             type=messages.FcVideoType.SET_OVERLAY,
-            payload=b"KD3BBP / TEST\x00",
+            payload=b"KD3BBD / TEST\x00",
         )
         handler(messages.FcVideoType.SET_OVERLAY, f)
-        self.assertEqual(pipe.overlays_set, ["KD3BBP / TEST"])
+        self.assertEqual(pipe.overlays_set, ["KD3BBD / TEST"])
 
     def test_set_source_starts_new_sender_and_records_pipeline_source(self):
         pipe = FakeControllerPipeline()
@@ -586,7 +594,52 @@ class ControllerMainAdapterTests(unittest.TestCase):
 
         self.assertEqual([f.type for f in l1_link.sent], [messages.VideoType.STOP_STREAM])
 
-    def test_set_source_rejects_unknown_source_and_bad_slot(self):
+    def test_set_source_accepts_sender_range_before_discovery(self):
+        pipe = FakeControllerPipeline()
+        link = FakeLink()
+        controller = Controller(links={"payload": link}, sender_addrs=())
+        switcher = SourceSwitcher(controller, pipe, ())
+        handler = make_fc_video_handler(pipe, [], switcher)
+
+        handler(
+            messages.FcVideoType.SET_SOURCE,
+            _frame(
+                src=0,
+                dst=0,
+                family=protocol.FAMILY_FC_VIDEO,
+                type=messages.FcVideoType.SET_SOURCE,
+                payload=messages.SetSource(1, protocol.ADDR_SENDER_PAYLOAD).encode(),
+            ),
+        )
+
+        self.assertEqual(switcher.sources[1], protocol.ADDR_SENDER_PAYLOAD)
+        self.assertEqual(switcher.active_sources[1], protocol.ADDR_UNASSIGNED)
+        self.assertEqual(link.sent, [])
+        self.assertEqual(pipe.sources_set, [])
+
+        controller.ensure_sender(protocol.ADDR_SENDER_PAYLOAD, route_name="payload")
+        controller.receive(
+            _frame(
+                src=protocol.ADDR_SENDER_PAYLOAD,
+                dst=protocol.ADDR_CONTROLLER,
+                family=protocol.FAMILY_NETMGMT,
+                type=protocol.NETMGMT_HEARTBEAT,
+            ),
+            now=1.0,
+            ingress="payload",
+        )
+        switcher.reconcile(now=1.0)
+
+        self.assertEqual(switcher.active_sources[1], protocol.ADDR_SENDER_PAYLOAD)
+        self.assertEqual(pipe.sources_set, [(1, protocol.ADDR_SENDER_PAYLOAD)])
+        # Discovery from the heartbeat first asks the Sender to identify
+        # itself (GET_INFO), then reconcile starts its stream.
+        self.assertEqual(
+            [f.type for f in link.sent],
+            [messages.VideoType.GET_INFO, messages.VideoType.START_STREAM],
+        )
+
+    def test_set_source_rejects_non_sender_source_and_bad_slot(self):
         pipe = FakeControllerPipeline()
         link = FakeLink()
         controller = Controller(
@@ -597,7 +650,7 @@ class ControllerMainAdapterTests(unittest.TestCase):
         handler = make_fc_video_handler(pipe, [], switcher)
 
         for payload in (
-            messages.SetSource(0, protocol.ADDR_SENDER_PAYLOAD).encode(),
+            messages.SetSource(0, protocol.ADDR_RADIO_CMD).encode(),
             messages.SetSource(9, protocol.ADDR_SENDER_AIRBRAKE).encode(),
         ):
             handler(
@@ -631,6 +684,83 @@ class ControllerMainAdapterTests(unittest.TestCase):
         self.assertEqual(pipe.layouts_set, [])
         self.assertEqual(pipe.overlays_set, [])
         self.assertEqual(pipe.sources_set, [])
+
+    def test_build_status_report_includes_layout_sources_and_sender_video(self):
+        pipe = FakeControllerPipeline()
+        pipe.set_layout("split")
+        controller = Controller(
+            links={"airbrake": FakeLink()},
+            sender_addrs=(
+                protocol.ADDR_SENDER_AIRBRAKE,
+                protocol.ADDR_SENDER_PAYLOAD,
+            )
+        )
+        switcher = SourceSwitcher(
+            controller,
+            pipe,
+            (protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD),
+            initial_sources=(
+                protocol.ADDR_CONTROLLER,
+                protocol.ADDR_SENDER_AIRBRAKE,
+            ),
+        )
+        controller.health.observe(
+            _frame(
+                src=protocol.ADDR_SENDER_AIRBRAKE,
+                dst=protocol.ADDR_CONTROLLER,
+                family=protocol.FAMILY_NETMGMT,
+                type=protocol.NETMGMT_HEARTBEAT,
+            ),
+            now=1.0,
+        )
+        report = messages.StatusReport(
+            state=1,
+            cpu_temp_c=50,
+            cpu_load_pct=25,
+            free_disk_mb=4000,
+            rssi_dbm=-30,
+            tx_frames=12,
+            dropped_frames=0,
+        )
+        controller.receive(
+            _frame(
+                src=protocol.ADDR_SENDER_AIRBRAKE,
+                dst=protocol.ADDR_CONTROLLER,
+                family=protocol.FAMILY_VIDEO,
+                type=messages.VideoType.STATUS_REPORT,
+                payload=report.encode(),
+            ),
+            now=1.5,
+        )
+        controller.start_sender(protocol.ADDR_SENDER_AIRBRAKE, now=2.0)
+
+        status = build_fc_video_status_report(
+            controller,
+            switcher,
+            (protocol.ADDR_SENDER_AIRBRAKE, protocol.ADDR_SENDER_PAYLOAD),
+            layout=pipe.current_layout,
+        )
+        decoded = ControllerVideoStatus.decode(status.encode())
+
+        self.assertEqual(decoded.layout, "split")
+        self.assertEqual(
+            decoded.desired_sources,
+            (protocol.ADDR_CONTROLLER, protocol.ADDR_SENDER_AIRBRAKE),
+        )
+        self.assertEqual(
+            decoded.active_sources,
+            (protocol.ADDR_CONTROLLER, protocol.ADDR_UNASSIGNED),
+        )
+        by_addr = {sender.addr: sender for sender in decoded.senders}
+        self.assertEqual(
+            by_addr[protocol.ADDR_SENDER_AIRBRAKE].flags,
+            messages.FC_VIDEO_STATUS_FLAG_ONLINE
+            | messages.FC_VIDEO_STATUS_FLAG_TRANSMITTING
+            | messages.FC_VIDEO_STATUS_FLAG_RECORDING,
+        )
+        self.assertEqual(by_addr[protocol.ADDR_SENDER_AIRBRAKE].status, report)
+        self.assertEqual(by_addr[protocol.ADDR_SENDER_PAYLOAD].flags, 0)
+        self.assertIsNone(by_addr[protocol.ADDR_SENDER_PAYLOAD].status)
 
     def test_get_layouts_without_controller_is_logged_no_pipeline_call(self):
         pipe = FakeControllerPipeline()

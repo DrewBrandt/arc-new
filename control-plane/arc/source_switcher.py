@@ -24,6 +24,7 @@ import logging
 from collections.abc import Iterable, Mapping
 
 from arc_protocol import protocol
+from arc.addressing import is_sender_addr
 from arc.controller import Controller
 
 
@@ -68,6 +69,15 @@ class SourceSwitcher:
         self.active_sources = [EMPTY_SOURCE] * slot_count
         if slot_count:
             self.active_sources[0] = LOCAL_SOURCE
+        for source in self.sources:
+            if is_sender_addr(source):
+                self.add_sender(source)
+
+    def add_sender(self, addr: int) -> None:
+        """Include a discovered sender in source reconciliation."""
+
+        if is_sender_addr(addr):
+            self.sender_addrs.add(addr)
 
     def set_source(self, slot_id: int, source_addr: int, now: float = 0.0) -> None:
         if not 0 <= slot_id < len(self.sources):
@@ -82,6 +92,7 @@ class SourceSwitcher:
             log.warning("SET_SOURCE unknown source 0x%02x", source_addr)
             return
 
+        self.add_sender(source_addr)
         self.sources[slot_id] = source_addr
         self._reconcile_slot(slot_id, now=now)
 
@@ -99,6 +110,7 @@ class SourceSwitcher:
                 return
 
         for slot_id, source_addr in requested.items():
+            self.add_sender(source_addr)
             self.sources[slot_id] = source_addr
         self._reconcile_slots(requested.keys(), now=now)
 
@@ -197,7 +209,7 @@ class SourceSwitcher:
     def _is_known_source(self, source_addr: int) -> bool:
         return (
             source_addr in (EMPTY_SOURCE, LOCAL_SOURCE)
-            or source_addr in self.sender_addrs
+            or is_sender_addr(source_addr)
         )
 
     def _is_remote_sender(self, source_addr: int) -> bool:

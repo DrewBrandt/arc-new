@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from arc_protocol import protocol
+from arc.addressing import is_sender_addr, sender_addr_range
 from arc.config import ControllerConfig
 from arc.pipeline_errors import PipelineError
 from arc.video_ports import video_port_for_sender
@@ -198,14 +199,17 @@ class ControllerPipeline:
             )
         self.config = config
         self.callsign = callsign or config.callsign
-        self._sender_ips = {sender.addr: sender.ip for sender in config.senders}
         self._local_camera_source = _build_local_camera_source(
             config.video.local_camera_rotation
+        )
+        configured_senders = {sender.addr for sender in config.senders}
+        selector_sender_addrs = tuple(
+            sorted(set(sender_addr_range()) | configured_senders)
         )
         self._selector_sources = (
             _EMPTY_SOURCE,
             _LOCAL_SOURCE,
-            *(sender.addr for sender in config.senders),
+            *selector_sender_addrs,
         )
         self._selector_pad_by_source = {
             source: f"sink_{idx}" for idx, source in enumerate(self._selector_sources)
@@ -491,7 +495,7 @@ class ControllerPipeline:
             return SourceProps(source_addr, _BLACK_SOURCE)
         if source_addr == _LOCAL_SOURCE:
             return SourceProps(source_addr, self._local_camera_source)
-        if source_addr not in self._sender_ips:
+        if not is_sender_addr(source_addr):
             raise PipelineError(f"unknown source sender 0x{source_addr:02x}")
         return SourceProps(
             source_addr,

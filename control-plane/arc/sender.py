@@ -41,10 +41,12 @@ class Sender:
         heartbeat_interval_s: float = 1.0,
         peer_timeout_s: float = 3.0,
         video_command_handler: VideoCommandHandler | None = None,
+        name: str = "",
     ) -> None:
         self.addr = addr
         self.paired_fc = paired_fc
         self.controller_addr = controller_addr
+        self.name = name
         self.node = Node(
             addr=addr,
             routes=sender_routes(paired_fc),
@@ -65,9 +67,12 @@ class Sender:
         peers: tuple[int, ...] = (controller_addr,)
         if paired_fc is not None:
             peers = (controller_addr, paired_fc)
+        # Broadcast (not directed at the Controller): neighbors learn our
+        # address + ingress link from the heartbeat, so any node can route to
+        # us. Receivers track liveness by src, so this still feeds PeerHealth.
         self.heartbeat = Heartbeat(
             self.node.send_local,
-            dst=controller_addr,
+            dst=protocol.ADDR_BROADCAST,
             interval_s=heartbeat_interval_s,
         )
         self.health = PeerHealth(peers=peers, timeout_s=peer_timeout_s)
@@ -117,7 +122,7 @@ class Sender:
 
     def _handle_local_frame(self, frame: protocol.Frame, now: float) -> None:
         if frame.family == protocol.FAMILY_VIDEO:
-            self._apply_video_command(frame)
+            self._apply_video_command(frame, now=now)
             return
         if frame.family == protocol.FAMILY_NETMGMT and frame.type == protocol.NETMGMT_HEARTBEAT:
             return
@@ -127,11 +132,43 @@ class Sender:
         # that wire in further dispatch.
         self.unhandled_frames.append(frame)
 
-    def _apply_video_command(self, frame: protocol.Frame) -> None:
+    def report_info(self, dst: int | None = None, now: float = 0.0) -> protocol.Frame:
+        """Emit a VIDEO INFO_REPORT describing this Sender.
+
+        Sent in reply to a Controller GET_INFO so the Controller can learn
+        the Sender's friendly name and paired FC at discovery time without
+        having it pre-declared in config.
+        """
+
+        report = messages.VideoInfoReport(
+            name=self.name,
+            paired_fc=self.paired_fc
+            if self.paired_fc is not None
+            else protocol.ADDR_UNASSIGNED,
+        )
+        return self.node.send_local(
+            dst=self.controller_addr if dst is None else dst,
+            family=protocol.FAMILY_VIDEO,
+            type=messages.VideoType.INFO_REPORT,
+            payload=report.encode(),
+            reliable=True,
+            now=now,
+        )
+
+    def _apply_video_command(self, frame: protocol.Frame, now: float = 0.0) -> None:
         try:
             video_type = messages.VideoType(frame.type)
         except ValueError as exc:
             raise SenderError(f"unknown VIDEO type 0x{frame.type:02x}") from exc
+
+        if video_type is messages.VideoType.GET_INFO:
+            # Identity query, not a stream-state change: reply to whoever
+            # asked and leave transmit/record state (and the pipeline
+            # handler) untouched.
+            self.report_info(dst=frame.src or self.controller_addr, now=now)
+            return
+        if video_type is messages.VideoType.INFO_REPORT:
+            raise SenderError("Sender received its own INFO_REPORT")
 
         self.last_command = frame
         if video_type is messages.VideoType.START_STREAM:

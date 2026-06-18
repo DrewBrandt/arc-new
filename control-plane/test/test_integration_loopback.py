@@ -1,4 +1,4 @@
-"""Process-level integration test: real Controller + Sender over loopback TCP.
+﻿"""Process-level integration test: real Controller + Sender over loopback TCP.
 
 Unit tests cover the layers individually; this test wires up the actual
 ``controller_main.run()`` and ``sender_main.run()`` entry points and
@@ -150,7 +150,7 @@ async def _wait_until(
 def _build_controller_cfg(*, listen_port: int, sender_ip: str) -> ControllerConfig:
     return ControllerConfig(
         addr=protocol.ADDR_CONTROLLER,
-        callsign="KD3BBP",
+        callsign="KD3BBD",
         uart=UartConfig(device="/dev/null/fake-uart", baud=115200),
         listen_port=listen_port,
         senders=(

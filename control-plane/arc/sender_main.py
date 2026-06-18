@@ -92,6 +92,7 @@ async def run(
         heartbeat_interval_s=cfg.heartbeat_interval_s,
         peer_timeout_s=cfg.peer_timeout_s,
         video_command_handler=video_handler,
+        name=cfg.name,
     )
 
     controller_link = QueuedTcpLink(

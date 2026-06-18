@@ -32,13 +32,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from arc_protocol import messages, protocol
+from arc_protocol.router import controller_routes
+from arc.addressing import is_sender_addr
 from arc.bench_server import (
     BENCH_CONTROL_HOST,
     BENCH_CONTROL_PORT,
     BenchCommandServer,
 )
-from arc.config import ControllerConfig, load_controller_config
+from arc.config import ControllerConfig, UartConfig, load_controller_config
 from arc.controller import Controller
+from arc.fc_video_status import ControllerVideoStatus, SenderVideoSnapshot
 from arc.pipeline_controller import ControllerPipeline, PipelineError
 from arc.runtime import (
     QueuedTcpLink,
@@ -91,14 +94,14 @@ class _ControllerTelemetry:
         self,
         controller: Controller,
         source_switcher: SourceSwitcher,
-        fc_uart: QueuedUartLink,
+        serial_links_by_route: dict[str, QueuedUartLink],
         tcp_links_by_route: dict[str, QueuedTcpLink],
         *,
         interval_s: float = TELEMETRY_INTERVAL_S,
     ) -> None:
         self.controller = controller
         self.source_switcher = source_switcher
-        self.fc_uart = fc_uart
+        self.serial_links_by_route = serial_links_by_route
         self.tcp_links_by_route = tcp_links_by_route
         self.interval_s = interval_s
         self._next_report_at: float | None = None
@@ -129,11 +132,17 @@ class _ControllerTelemetry:
             f"{name}:online={int(link.online)},q={link.queue.qsize()},drop={link.dropped}"
             for name, link in sorted(self.tcp_links_by_route.items())
         )
+        serial = " ".join(
+            f"{name}:online={int(link.online)},q={link.queue.qsize()},"
+            f"drop={link.dropped},bad={link.bad_frames},disc={link.disconnects},"
+            f"reason={link.last_disconnect_reason or '-'}"
+            for name, link in sorted(self.serial_links_by_route.items())
+        )
         gst = self._gst_summary(sample)
         log.info(
             "telemetry cpu=%.1f%% rss=%s temp=%s load1=%s tick_gap=%.1fms "
-            "pending=%d inbox=%d failed=%d unhandled=%d uart_online=%d "
-            "uart_q=%d uart_drop=%d uart_bad=%d desired=%s active=%s tcp=[%s] gst=[%s]",
+            "pending=%d inbox=%d failed=%d unhandled=%d "
+            "desired=%s active=%s serial=[%s] tcp=[%s] gst=[%s]",
             cpu_pct,
             rss,
             temp,
@@ -143,12 +152,9 @@ class _ControllerTelemetry:
             len(self.controller.node.inbox),
             len(self.controller.node.failed),
             len(self.controller.unhandled_frames),
-            int(self.fc_uart.online),
-            self.fc_uart.queue.qsize(),
-            self.fc_uart.dropped,
-            self.fc_uart.bad_frames,
             _format_sources(self.source_switcher.sources),
             _format_sources(self.source_switcher.active_sources),
+            serial,
             tcp,
             gst,
         )
@@ -289,8 +295,10 @@ def _read_load1() -> float | None:
 def build_fc_video_status_report(
     controller: Controller,
     source_switcher: SourceSwitcher | None,
-    sender_addrs: tuple[int, ...],
-) -> messages.FcVideoStatusReport:
+    sender_addrs: tuple[int, ...] | None = None,
+    *,
+    layout: str | None = None,
+) -> ControllerVideoStatus:
     """Snapshot of the Controller's view, used to answer GET_STATUS.
 
     Slot sources come from the SourceSwitcher's currently-active slots
@@ -310,22 +318,35 @@ def build_fc_video_status_report(
     else:
         slots = ()
 
-    sender_entries: list[messages.FcVideoSenderStatus] = []
-    for addr in sender_addrs:
+    visible_sender_addrs = (
+        tuple(sorted(controller.senders)) if sender_addrs is None else sender_addrs
+    )
+    sender_entries: list[SenderVideoSnapshot] = []
+    for addr in visible_sender_addrs:
         flags = 0
-        if controller.health.is_online(addr):
+        online = controller.health.is_online(addr)
+        if online:
             flags |= messages.FC_VIDEO_STATUS_FLAG_ONLINE
         link = controller.senders.get(addr)
-        if link is not None:
+        if link is not None and online:
             last = link.last_command_type
             if last is messages.VideoType.START_STREAM:
                 flags |= messages.FC_VIDEO_STATUS_FLAG_TRANSMITTING
             if last is not messages.VideoType.HARD_STOP:
                 flags |= messages.FC_VIDEO_STATUS_FLAG_RECORDING
-        sender_entries.append(messages.FcVideoSenderStatus(addr=addr, flags=flags))
+        sender_entries.append(
+            SenderVideoSnapshot(
+                addr=addr,
+                flags=flags,
+                status=link.last_status.report if link and link.last_status else None,
+            )
+        )
 
-    return messages.FcVideoStatusReport(
-        slots=slots,
+    desired = tuple(source_switcher.sources) if source_switcher is not None else ()
+    return ControllerVideoStatus(
+        layout=layout or "",
+        desired_sources=desired,
+        active_sources=slots,
         senders=tuple(sender_entries),
     )
 
@@ -385,7 +406,10 @@ def make_fc_video_handler(
                     )
                     return
                 report = build_fc_video_status_report(
-                    controller, source_switcher, sender_addrs
+                    controller,
+                    source_switcher,
+                    None,
+                    layout=getattr(pipeline, "current_layout", None),
                 )
                 controller.node.send_local(
                     dst=frame.src if frame.src != 0 else fc_n_addr,
@@ -427,6 +451,30 @@ def _sender_route_name(addr: int) -> str:
         protocol.ADDR_SENDER_GROUND: "ground",
     }
     return aliases.get(addr, f"sender-0x{addr:02x}")
+
+
+def _hitl_route_name(name: str, addr: int) -> str:
+    safe = "".join(ch.lower() if ch.isalnum() else "-" for ch in name).strip("-")
+    return f"hitl-{safe}" if safe else f"hitl-0x{addr:02x}"
+
+
+def _controller_routes_for_config(cfg: ControllerConfig) -> dict[int, str]:
+    routes = dict(controller_routes())
+    if cfg.fc_usb is None:
+        return routes
+
+    routes.update(
+        {
+            protocol.ADDR_FC_N: "fc-usb",
+            protocol.ADDR_GROUND: "uart-hub",
+            protocol.ADDR_TEENSY_HUB: "uart-hub",
+            protocol.ADDR_RADIO_CMD: "uart-hub",
+            protocol.ADDR_RADIO_G: "uart-hub",
+            protocol.ADDR_RADIO_DATA: "uart-hub",
+            protocol.ADDR_ARCH_MEGA_N: "uart-hub",
+        }
+    )
+    return routes
 
 
 def _install_signal_handlers(callback) -> None:
@@ -476,6 +524,8 @@ async def run(
 
     controller = Controller(
         sender_addrs=tuple(s.addr for s in cfg.senders),
+        routes=_controller_routes_for_config(cfg),
+        extra_peer_addrs=tuple(p.addr for p in cfg.hitl_peers),
         heartbeat_interval_s=cfg.heartbeat_interval_s,
         peer_timeout_s=cfg.peer_timeout_s,
         retain_local_history=False,
@@ -514,39 +564,89 @@ async def run(
         port=bench_port,
     )
 
-    # Build links: UART for FC-N, one TCP link per Sender keyed by route name.
-    fc_uart = QueuedUartLink(
-        lambda f: controller.receive(f, _now(), ingress="uart-fc-n")
-    )
-    tcp_links_by_route = {
-        _sender_route_name(addr): QueuedTcpLink(
-            lambda f, _route=_sender_route_name(addr): controller.receive(
+    # Build links: serial ARC links, HITL peers from config, and video Senders
+    # lazily from their ARC source address. A Sender no longer has to be
+    # listed in controller.toml to get a route; its first heartbeat/status
+    # frame is enough for the TCP server to bind the connection.
+    serial_links_by_route: dict[str, QueuedUartLink] = {}
+    serial_devices_by_route: dict[str, UartConfig] = {}
+    if cfg.fc_usb is None:
+        serial_devices_by_route["uart-fc-n"] = cfg.uart
+    else:
+        serial_devices_by_route["uart-hub"] = cfg.uart
+        serial_devices_by_route["fc-usb"] = cfg.fc_usb
+
+    for route in serial_devices_by_route:
+        serial_links_by_route[route] = QueuedUartLink(
+            lambda f, _route=route: controller.receive(
                 f, _now(), ingress=_route
             )
         )
-        for addr in (s.addr for s in cfg.senders)
+    controller_links = dict(serial_links_by_route)
+    tcp_links_by_route: dict[str, QueuedTcpLink] = {}
+    tcp_links_by_addr: dict[int, QueuedTcpLink] = {}
+
+    def _register_tcp_link(addr: int, route: str) -> QueuedTcpLink:
+        link = tcp_links_by_route.get(route)
+        if link is None:
+            link = QueuedTcpLink(
+                lambda f, _route=route: controller.receive(
+                    f, _now(), ingress=_route
+                )
+            )
+            tcp_links_by_route[route] = link
+            controller_links[route] = link
+            controller.node.router.links[route] = link
+        tcp_links_by_addr[addr] = link
+        controller.node.router.routes[addr] = route
+        return link
+
+    def _ensure_sender_tcp_link(addr: int) -> QueuedTcpLink | None:
+        if not is_sender_addr(addr):
+            return None
+        route = _sender_route_name(addr)
+        link = _register_tcp_link(addr, route)
+        if addr not in controller.senders:
+            log.info("discovered Sender 0x%02x on route %s", addr, route)
+        controller.ensure_sender(addr, route_name=route)
+        source_switcher.add_sender(addr)
+        return link
+
+    for sender in cfg.senders:
+        _ensure_sender_tcp_link(sender.addr)
+
+    hitl_route_by_addr = {
+        p.addr: _hitl_route_name(p.name, p.addr) for p in cfg.hitl_peers
     }
-    tcp_links_by_addr = {
-        s.addr: tcp_links_by_route[_sender_route_name(s.addr)] for s in cfg.senders
-    }
-    controller.set_links({"uart-fc-n": fc_uart, **tcp_links_by_route})
+    for addr, route in hitl_route_by_addr.items():
+        _register_tcp_link(addr, route)
+    controller.set_links(controller_links)
     telemetry = _ControllerTelemetry(
         controller,
         source_switcher,
-        fc_uart,
+        serial_links_by_route,
         tcp_links_by_route,
     )
 
     # Map Sender source IPs to their TCP links so the TCP server can attach.
     ip_to_link = {
-        s.ip: tcp_links_by_route[_sender_route_name(s.addr)] for s in cfg.senders
+        s.ip: tcp_links_by_route[_sender_route_name(s.addr)]
+        for s in cfg.senders
     }
+    ip_to_link.update(
+        {
+            p.ip: tcp_links_by_route[hitl_route_by_addr[p.addr]]
+            for p in cfg.hitl_peers
+            if p.ip is not None
+        }
+    )
 
     server = TcpServer(
         host="0.0.0.0",
         port=cfg.listen_port,
         link_for_peer=ip_to_link.get,
-        link_for_frame=lambda f: tcp_links_by_addr.get(f.src),
+        link_for_frame=lambda f: tcp_links_by_addr.get(f.src)
+        or _ensure_sender_tcp_link(f.src),
     )
     await server.start()
     log.info("Controller listening on :%d", cfg.listen_port)
@@ -590,8 +690,16 @@ async def run(
         telemetry.maybe_log(now)
 
     tasks = [
-        asyncio.create_task(
-            run_uart_link(fc_uart, cfg.uart.device, cfg.uart.baud, stop_event=stop_event)
+        *(
+            asyncio.create_task(
+                run_uart_link(
+                    serial_links_by_route[route],
+                    serial_cfg.device,
+                    serial_cfg.baud,
+                    stop_event=stop_event,
+                )
+            )
+            for route, serial_cfg in serial_devices_by_route.items()
         ),
         asyncio.create_task(
             run_tick_loop(_tick, interval_s=0.05, stop_event=stop_event)
@@ -612,7 +720,10 @@ async def run(
                 await t
             except (asyncio.CancelledError, Exception):
                 pass
-        for link in (fc_uart, *tcp_links_by_route.values()):
+        for link in (
+            *serial_links_by_route.values(),
+            *dict.fromkeys(tcp_links_by_route.values()),
+        ):
             await link.stop()
         await server.stop()
         await bench_server.stop()

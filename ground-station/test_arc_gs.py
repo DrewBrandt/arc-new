@@ -140,6 +140,32 @@ class GroundStationProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(frame.src, protocol.ADDR_TEENSY_HUB)
         self.assertGreaterEqual(rtt_ms, 0.0)
 
+    async def test_reliable_downlink_is_acknowledged(self):
+        client = FakeClient()
+        gs = arc_gs.GroundStation(client)
+        frame = protocol.build_frame(
+            protocol.ADDR_CONTROLLER,
+            protocol.ADDR_GROUND,
+            protocol.FLAG_RELIABLE,
+            7,
+            42,
+            protocol.FAMILY_FC_VIDEO,
+            int(messages.FcVideoType.STATUS_REPORT),
+            b"not-valid-status",
+        )
+
+        gs.on_notify(None, protocol.cobs_encode(frame))
+        await asyncio.sleep(0)
+
+        self.assertEqual(len(client.writes), 1)
+        ack = protocol.decode_frame(client.writes[0][1])
+        self.assertEqual(ack.src, protocol.ADDR_GROUND)
+        self.assertEqual(ack.dst, protocol.ADDR_CONTROLLER)
+        self.assertEqual(ack.flags, protocol.FLAG_ACK)
+        self.assertEqual(ack.family, protocol.FAMILY_NETMGMT)
+        self.assertEqual(ack.type, protocol.NETMGMT_ACK)
+        self.assertEqual(ack.payload, (42).to_bytes(2, "big"))
+
     async def test_wait_for_ack_resolves_matching_sequence(self):
         client = FakeClient()
         gs = arc_gs.GroundStation(client)
@@ -161,6 +187,21 @@ class GroundStationProtocolTests(unittest.IsolatedAsyncioTestCase):
         ack = await waiter
         self.assertEqual(ack.src, protocol.ADDR_RADIO_CMD)
         self.assertEqual(ack.payload, ack_payload)
+
+    async def test_status_command_requests_controller_status(self):
+        client = FakeClient()
+        gs = arc_gs.GroundStation(client)
+
+        seq = await gs.request_status()
+
+        self.assertEqual(seq, 0)
+        frame = protocol.decode_frame(client.writes[0][1])
+        self.assertEqual(frame.src, protocol.ADDR_GROUND)
+        self.assertEqual(frame.dst, protocol.ADDR_CONTROLLER)
+        self.assertEqual(frame.flags, protocol.FLAG_RELIABLE)
+        self.assertEqual(frame.family, protocol.FAMILY_FC_VIDEO)
+        self.assertEqual(frame.type, int(messages.FcVideoType.GET_STATUS))
+        self.assertEqual(frame.payload, b"")
 
     def test_parse_addr_accepts_aliases_and_numbers(self):
         self.assertEqual(arc_gs.parse_addr("hub"), protocol.ADDR_TEENSY_HUB)
@@ -205,6 +246,53 @@ class GroundStationProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("stage=boost", detail)
         self.assertIn("alt=1850.0m", detail)
         self.assertIn("vbat=11.90V", detail)
+
+    def test_describes_rich_fc_video_status(self):
+        status = arc_gs.ControllerVideoStatus(
+            layout="split",
+            desired_sources=(protocol.ADDR_CONTROLLER, protocol.ADDR_SENDER_AIRBRAKE),
+            active_sources=(protocol.ADDR_CONTROLLER, protocol.ADDR_UNASSIGNED),
+            senders=(
+                arc_gs.SenderVideoSnapshot(
+                    addr=protocol.ADDR_SENDER_AIRBRAKE,
+                    flags=messages.FC_VIDEO_STATUS_FLAG_ONLINE
+                    | messages.FC_VIDEO_STATUS_FLAG_RECORDING,
+                    status=messages.StatusReport(
+                        state=1,
+                        cpu_temp_c=52,
+                        cpu_load_pct=33,
+                        free_disk_mb=1234,
+                        rssi_dbm=-42,
+                        tx_frames=9,
+                        dropped_frames=1,
+                    ),
+                ),
+                arc_gs.SenderVideoSnapshot(
+                    addr=protocol.ADDR_SENDER_PAYLOAD,
+                    flags=0,
+                    status=None,
+                ),
+            ),
+        )
+        frame = protocol.Frame(
+            src=protocol.ADDR_CONTROLLER,
+            dst=protocol.ADDR_GROUND,
+            flags=protocol.FLAG_RELIABLE,
+            session=1,
+            seq=7,
+            family=protocol.FAMILY_FC_VIDEO,
+            type=int(messages.FcVideoType.STATUS_REPORT),
+            payload=status.encode(),
+        )
+
+        detail = arc_gs.describe_payload(frame)
+
+        self.assertIsNotNone(detail)
+        self.assertIn("layout=split", detail)
+        self.assertIn("desired=slot0=Pi Controller", detail)
+        self.assertIn("active=slot0=Pi Controller", detail)
+        self.assertIn("connected=Airbrake Sender", detail)
+        self.assertIn("Payload Sender (0x13) | offline | video=no-report", detail)
 
 
 if __name__ == "__main__":

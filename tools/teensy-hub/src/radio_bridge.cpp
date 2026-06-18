@@ -5,15 +5,15 @@
 #include "hub_config.h"
 
 #ifndef HUB_BRIDGE_SERIAL
-#define HUB_BRIDGE_SERIAL HUB_SERIAL_SPOKE1
+#define HUB_BRIDGE_SERIAL HUB_DATA_RADIO_SERIAL
 #endif
 
 #ifndef HUB_BRIDGE_BAUD
-#define HUB_BRIDGE_BAUD HUB_LINK_BAUD
+#define HUB_BRIDGE_BAUD HUB_DATA_RADIO_BAUD
 #endif
 
 #ifndef HUB_BRIDGE_LABEL
-#define HUB_BRIDGE_LABEL "serial1"
+#define HUB_BRIDGE_LABEL "data-radio"
 #endif
 
 static uint32_t g_usb_to_radio = 0;

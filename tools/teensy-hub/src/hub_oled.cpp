@@ -22,8 +22,12 @@ static uint8_t  g_page = 0;
 static uint32_t g_last_redraw_ms = 0;
 static uint32_t g_last_page_ms = 0;
 static uint32_t g_test_until_ms = 0;
+static uint32_t g_last_health_ms = 0;
 
-static constexpr uint8_t HUB_OLED_PAGES = 3;
+static constexpr uint8_t  HUB_OLED_PAGES = 3;
+// How often to retry detecting a panel that is absent/disconnected. Each retry
+// is a single bounded I2C probe, so a missing OLED never stalls routing.
+static constexpr uint32_t HUB_OLED_RECOVER_MS = 3000;
 
 static bool probe_addr(TwoWire& bus, uint8_t addr) {
     bus.beginTransmission(addr);
@@ -64,30 +68,34 @@ static bool select_oled_bus(void) {
     return false;
 }
 
+// Drive the panel on the already-selected bus through its init + splash.
+// Returns false if it does not come up so the caller can keep running headless.
+static bool init_panel(void) {
+    if (!g_display->begin(SSD1306_SWITCHCAPVCC, g_oled_addr, false)) return false;
+
+    g_display->ssd1306_command(SSD1306_DISPLAYON);
+    g_display->ssd1306_command(SSD1306_NORMALDISPLAY);
+    g_display->ssd1306_command(SSD1306_SETCONTRAST);
+    g_display->ssd1306_command(0xFF);
+
+    g_display->clearDisplay();
+    g_display->fillRect(0, 0, HUB_OLED_WIDTH, HUB_OLED_HEIGHT, SSD1306_WHITE);
+    g_display->display();
+    delay(600);
+
+    g_display->clearDisplay();
+    g_display->setTextSize(1);
+    g_display->setTextColor(SSD1306_WHITE);
+    g_display->setCursor(0, 0);
+    g_display->println(F("ARC HUB"));
+    g_display->println(F("booting..."));
+    g_display->display();
+    return true;
+}
+
 bool hub_oled_begin(void) {
-    g_ok = select_oled_bus();
-    if (g_ok) {
-        g_ok = g_display->begin(SSD1306_SWITCHCAPVCC, g_oled_addr, false);
-    }
-    if (g_ok) {
-        g_display->ssd1306_command(SSD1306_DISPLAYON);
-        g_display->ssd1306_command(SSD1306_NORMALDISPLAY);
-        g_display->ssd1306_command(SSD1306_SETCONTRAST);
-        g_display->ssd1306_command(0xFF);
-
-        g_display->clearDisplay();
-        g_display->fillRect(0, 0, HUB_OLED_WIDTH, HUB_OLED_HEIGHT, SSD1306_WHITE);
-        g_display->display();
-        delay(600);
-
-        g_display->clearDisplay();
-        g_display->setTextSize(1);
-        g_display->setTextColor(SSD1306_WHITE);
-        g_display->setCursor(0, 0);
-        g_display->println(F("ARC HUB"));
-        g_display->println(F("booting..."));
-        g_display->display();
-    }
+    g_last_health_ms = millis();
+    g_ok = select_oled_bus() && init_panel();
     return g_ok;
 }
 
@@ -154,23 +162,22 @@ static void draw_links(uint32_t now_ms) {
     g_display->print(now_ms / 1000UL);
     g_display->println('s');
 
-    g_display->print(F("s1:"));
+    g_display->print(F("s2:"));
     g_display->print(online_mark(hub_links_online(HUB_LINK_SPOKE1, now_ms, HUB_PEER_TIMEOUT_MS)));
-    g_display->print(F(" s2:"));
-    g_display->print(online_mark(hub_links_online(HUB_LINK_SPOKE2, now_ms, HUB_PEER_TIMEOUT_MS)));
     g_display->print(F(" s3:"));
-    g_display->print(online_mark(hub_links_online(HUB_LINK_SPOKE3, now_ms, HUB_PEER_TIMEOUT_MS)));
+    g_display->print(online_mark(hub_links_online(HUB_LINK_SPOKE2, now_ms, HUB_PEER_TIMEOUT_MS)));
     g_display->print(F(" s4:"));
+    g_display->print(online_mark(hub_links_online(HUB_LINK_SPOKE3, now_ms, HUB_PEER_TIMEOUT_MS)));
+    g_display->print(F(" s5:"));
     g_display->println(online_mark(hub_links_online(HUB_LINK_SPOKE4, now_ms, HUB_PEER_TIMEOUT_MS)));
 
-    g_display->print(F("s5:"));
+    g_display->print(F("s6:"));
     g_display->print(online_mark(hub_links_online(HUB_LINK_SPOKE5, now_ms, HUB_PEER_TIMEOUT_MS)));
-    g_display->print(F(" s6:"));
-    g_display->print(online_mark(hub_links_online(HUB_LINK_SPOKE6, now_ms, HUB_PEER_TIMEOUT_MS)));
     g_display->print(F(" s7:"));
-    g_display->print(online_mark(hub_links_online(HUB_LINK_SPOKE7, now_ms, HUB_PEER_TIMEOUT_MS)));
+    g_display->print(online_mark(hub_links_online(HUB_LINK_SPOKE6, now_ms, HUB_PEER_TIMEOUT_MS)));
     g_display->print(F(" s8:"));
-    g_display->println(online_mark(hub_links_online(HUB_LINK_SPOKE8, now_ms, HUB_PEER_TIMEOUT_MS)));
+    g_display->print(online_mark(hub_links_online(HUB_LINK_SPOKE7, now_ms, HUB_PEER_TIMEOUT_MS)));
+    g_display->println(F(" tx1"));
 }
 
 static void draw_peers(uint32_t now_ms) {
@@ -210,7 +217,17 @@ static void draw_throughput(uint32_t now_ms) {
 }
 
 void hub_oled_tick(uint32_t now_ms) {
-    if (!g_ok) return;
+    // No panel right now: occasionally re-probe so one that gets (re)connected
+    // after boot comes back on its own. A single bounded I2C probe -- it can
+    // never stall the router the way pushing a framebuffer to a dead panel would.
+    if (!g_ok) {
+        if (now_ms - g_last_health_ms >= HUB_OLED_RECOVER_MS) {
+            g_last_health_ms = now_ms;
+            if (probe_addr(*g_wire, g_oled_addr)) g_ok = init_panel();
+        }
+        return;
+    }
+
     if ((int32_t)(now_ms - g_test_until_ms) < 0) return;
 
     if (now_ms - g_last_page_ms >= HUB_OLED_PAGE_MS) {
@@ -219,6 +236,16 @@ void hub_oled_tick(uint32_t now_ms) {
     }
     if (now_ms - g_last_redraw_ms < HUB_OLED_REDRAW_MS) return;
     g_last_redraw_ms = now_ms;
+
+    // Before pushing the framebuffer (~32 I2C writes), confirm the panel still
+    // ACKs. A loose/unplugged OLED would otherwise block the loop ~1-2s per
+    // redraw while every write times out -- enough to overflow the UART RX FIFOs
+    // and choke frame routing. Drop it instead; the recovery probe re-adopts it.
+    if (!probe_addr(*g_wire, g_oled_addr)) {
+        g_ok = false;
+        g_last_health_ms = now_ms;
+        return;
+    }
 
     g_display->clearDisplay();
     switch (g_page) {

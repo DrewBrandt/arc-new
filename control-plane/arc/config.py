@@ -64,18 +64,30 @@ class SenderEntry:
 
 
 @dataclass(frozen=True)
+class HitlPeerEntry:
+    addr: int
+    name: str
+    ip: str | None = None
+
+
+@dataclass(frozen=True)
 class ControllerConfig:
     addr: int
     callsign: str
     uart: UartConfig
     listen_port: int
     senders: tuple[SenderEntry, ...]
+    fc_usb: UartConfig | None = None
+    hitl_peers: tuple[HitlPeerEntry, ...] = ()
     heartbeat_interval_s: float = 1.0
     peer_timeout_s: float = 3.0
     layouts: Mapping[str, Mapping[str, Mapping[str, float]]] = field(default_factory=dict)
+    # Default slot mapping: the other camera (remote sender / empty until
+    # one is configured) takes the primary slot_0, and the Controller's own
+    # camera goes to the PIP slot_1.
     initial_sources: tuple[int, int] = (
-        protocol.ADDR_CONTROLLER,
         protocol.ADDR_UNASSIGNED,
+        protocol.ADDR_CONTROLLER,
     )
     video: ControllerVideoConfig = field(default_factory=ControllerVideoConfig)
 
@@ -112,6 +124,16 @@ def load_controller_config(path: str | Path) -> ControllerConfig:
         baud=int(uart_section.get("baud", 115200)),
     )
 
+    fc_usb: UartConfig | None = None
+    fc_usb_section = raw.get("fc_usb")
+    if fc_usb_section:
+        if not isinstance(fc_usb_section, dict):
+            raise ConfigError(f"{path}: [fc_usb] must be a table")
+        fc_usb = UartConfig(
+            device=_as_str(fc_usb_section.get("device"), path, "[fc_usb].device"),
+            baud=int(fc_usb_section.get("baud", 115200)),
+        )
+
     controller_section = raw.get("controller", {})
     listen_port = int(controller_section.get("listen_port", 6000))
 
@@ -119,6 +141,11 @@ def load_controller_config(path: str | Path) -> ControllerConfig:
     if not isinstance(senders_raw, list):
         raise ConfigError(f"{path}: [[senders]] must be an array of tables")
     senders = tuple(_parse_sender_entry(entry, path) for entry in senders_raw)
+
+    hitl_raw = raw.get("hitl_peers") or []
+    if not isinstance(hitl_raw, list):
+        raise ConfigError(f"{path}: [[hitl_peers]] must be an array of tables")
+    hitl_peers = tuple(_parse_hitl_peer_entry(entry, path) for entry in hitl_raw)
 
     health = raw.get("health", {})
     heartbeat_interval_s = float(health.get("heartbeat_interval_s", 1.0))
@@ -131,8 +158,8 @@ def load_controller_config(path: str | Path) -> ControllerConfig:
     if sources and not isinstance(sources, dict):
         raise ConfigError(f"{path}: [sources] must be a table")
     initial_sources = (
-        int(sources.get("slot_0", protocol.ADDR_CONTROLLER)),
-        int(sources.get("slot_1", protocol.ADDR_UNASSIGNED)),
+        int(sources.get("slot_0", protocol.ADDR_UNASSIGNED)),
+        int(sources.get("slot_1", protocol.ADDR_CONTROLLER)),
     )
     video_section = raw.get("video", {})
     if video_section and not isinstance(video_section, dict):
@@ -158,8 +185,10 @@ def load_controller_config(path: str | Path) -> ControllerConfig:
         addr=addr,
         callsign=callsign,
         uart=uart,
+        fc_usb=fc_usb,
         listen_port=listen_port,
         senders=senders,
+        hitl_peers=hitl_peers,
         heartbeat_interval_s=heartbeat_interval_s,
         peer_timeout_s=peer_timeout_s,
         layouts=layouts,
@@ -252,6 +281,17 @@ def _parse_sender_entry(entry: object, path: str | Path) -> SenderEntry:
     if paired_fc is not None:
         paired_fc = int(paired_fc)
     return SenderEntry(addr=addr, name=name, ip=ip, paired_fc=paired_fc)
+
+
+def _parse_hitl_peer_entry(entry: object, path: str | Path) -> HitlPeerEntry:
+    if not isinstance(entry, dict):
+        raise ConfigError(f"{path}: each [[hitl_peers]] entry must be a table")
+    addr = _require_int(entry, "id", path, "[[hitl_peers]]")
+    name = _as_str(entry.get("name", f"hitl-0x{addr:02x}"), path, "[[hitl_peers]].name")
+    ip = entry.get("ip")
+    if ip is not None:
+        ip = _as_str(ip, path, "[[hitl_peers]].ip")
+    return HitlPeerEntry(addr=addr, name=name, ip=ip)
 
 
 def _require(table: Mapping[str, object], key: str, path: str | Path) -> Mapping[str, object]:

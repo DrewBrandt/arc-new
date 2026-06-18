@@ -132,6 +132,67 @@ class SenderLinkTests(unittest.TestCase):
         self.assertFalse(link.online)
         self.assertIsNone(link.last_status)
 
+    def test_request_info_emits_unreliable_get_info(self):
+        link, sink = self.build_link()
+
+        frame = link.request_info(now=5.0)
+
+        self.assertTrue(link.info_requested)
+        self.assertEqual(frame.type, m.VideoType.GET_INFO)
+        self.assertEqual(frame.dst, p.ADDR_SENDER_AIRBRAKE)
+        self.assertEqual(sink.calls[0]["reliable"], False)
+        self.assertEqual(sink.calls[0]["payload"], b"")
+        # Identity query must not masquerade as a stream command.
+        self.assertIsNone(link.last_command_type)
+
+    def test_info_report_populates_name_and_paired_fc(self):
+        link, _sink = self.build_link()
+        info = m.VideoInfoReport(name="airbrake-cam", paired_fc=p.ADDR_FC_N)
+        frame = p.Frame(
+            src=p.ADDR_SENDER_AIRBRAKE,
+            dst=p.ADDR_CONTROLLER,
+            flags=0,
+            session=1,
+            seq=1,
+            family=p.FAMILY_VIDEO,
+            type=m.VideoType.INFO_REPORT,
+            payload=info.encode(),
+        )
+
+        decoded = link.handle_frame(frame, now=2.0)
+
+        self.assertEqual(decoded, info)
+        self.assertEqual(link.name, "airbrake-cam")
+        self.assertEqual(link.paired_fc, p.ADDR_FC_N)
+
+    def test_info_report_without_paired_fc_stores_none(self):
+        link, _sink = self.build_link()
+        info = m.VideoInfoReport(name="down-cam")
+        frame = p.Frame(
+            src=p.ADDR_SENDER_AIRBRAKE,
+            dst=p.ADDR_CONTROLLER,
+            flags=0,
+            session=1,
+            seq=1,
+            family=p.FAMILY_VIDEO,
+            type=m.VideoType.INFO_REPORT,
+            payload=info.encode(),
+        )
+
+        link.handle_frame(frame)
+
+        self.assertEqual(link.name, "down-cam")
+        self.assertIsNone(link.paired_fc)
+
+    def test_mark_offline_allows_rediscovery(self):
+        link, _sink = self.build_link()
+        link.request_info()
+        self.assertTrue(link.info_requested)
+
+        link.mark_offline()
+
+        self.assertFalse(link.info_requested)
+
     def test_rejects_frames_from_wrong_source_or_type(self):
         link, _sink = self.build_link()
         good_report = m.StatusReport(0, 1, 2, 3, -4, 5, 6)

@@ -36,10 +36,13 @@ UART_BAUD=115200
 # mDNS host for the Controller. Senders use this in their config.
 CONTROLLER_HOST="arcpi1.local"
 
-# Default Controller fleet. Override with --senders for your actual bench.
+# Optional Controller sender aliases. Runtime discovery uses ARC source
+# addresses, so a Controller can run with no hardcoded Sender list.
 # Format: addr:name:host:paired_fc, where paired_fc may be empty.
-CONTROLLER_SENDERS="0x12:airbrake:arcpi2.local:0x03,0x13:payload:arcpi3.local:0x04,0x15:ground:arcpi5.local:"
+CONTROLLER_SENDERS=""
 CONTROLLER_VIDEO_SINK="kmssink sync=false"
+CONTROLLER_FC_USB_DEVICE=""
+CONTROLLER_FC_USB_BAUD="${UART_BAUD}"
 
 SENDER_ADDR=""
 SENDER_NAME=""
@@ -71,7 +74,9 @@ usage() {
 Usage: sudo $0 {controller|sender} [options]
 
 Controller options:
-  --senders LIST          addr:name:host:paired_fc entries, comma-separated
+  --senders LIST          Optional addr:name:host:paired_fc aliases, comma-separated
+  --fc-usb-device DEV     Optional FC-N USB serial device, e.g. /dev/ttyACM0
+  --fc-usb-baud BAUD      FC-N USB serial baud (default: ${UART_BAUD})
 
 Sender options:
   --addr ADDR             Sender ARC address, e.g. 0x12
@@ -180,6 +185,14 @@ while [ $# -gt 0 ]; do
             CONTROLLER_SENDERS="${2:-}"
             shift 2
             ;;
+        --fc-usb-device)
+            CONTROLLER_FC_USB_DEVICE="${2:-}"
+            shift 2
+            ;;
+        --fc-usb-baud)
+            CONTROLLER_FC_USB_BAUD="${2:-}"
+            shift 2
+            ;;
         --force-config)
             FORCE_CONFIG=true
             shift
@@ -214,6 +227,7 @@ apt_install \
     git \
     python3 \
     python3-pip \
+    python3-venv \
     python3-gi \
     python3-gst-1.0 \
     python3-serial \
@@ -396,14 +410,31 @@ info "Creating application directory at $APP_DIR..."
 mkdir -p "$APP_DIR"
 chown "${SUDO_USER:-pi}:${SUDO_USER:-pi}" "$APP_DIR"
 
+VENV_DIR="${APP_DIR}/venv"
+VENV_SITE_PACKAGES=""
+
 if [ -d "${SCRIPT_DIR}/control-plane/arc" ]; then
     info "Installing control-plane package to ${APP_DIR}/control-plane..."
     rm -rf "${APP_DIR}/control-plane"
     mkdir -p "${APP_DIR}/control-plane"
     cp -a "${SCRIPT_DIR}/control-plane/arc" "${APP_DIR}/control-plane/"
+    if [ -f "${SCRIPT_DIR}/control-plane/requirements.txt" ]; then
+        cp "${SCRIPT_DIR}/control-plane/requirements.txt" "${APP_DIR}/control-plane/"
+    fi
     chown -R "${SUDO_USER:-pi}:${SUDO_USER:-pi}" "${APP_DIR}/control-plane"
 else
     warn "Could not find ${SCRIPT_DIR}/control-plane/arc; place code in ${APP_DIR}/control-plane before starting services."
+fi
+
+if [ -f "${APP_DIR}/control-plane/requirements.txt" ]; then
+    info "Installing Python dependencies into ${VENV_DIR}..."
+    python3 -m venv --system-site-packages "${VENV_DIR}"
+    "${VENV_DIR}/bin/python" -m pip install --upgrade pip
+    "${VENV_DIR}/bin/python" -m pip install -r "${APP_DIR}/control-plane/requirements.txt"
+    VENV_SITE_PACKAGES="$("${VENV_DIR}/bin/python" -c 'import site; print(site.getsitepackages()[0])')"
+    chown -R "${SUDO_USER:-pi}:${SUDO_USER:-pi}" "${VENV_DIR}"
+else
+    warn "No control-plane requirements.txt found; Python dependencies must be installed manually."
 fi
 
 CONFIG_DIR="/etc/arc"
@@ -479,8 +510,18 @@ address = 0x10
 device = "/dev/serial0"
 baud = ${UART_BAUD}
 
+EOF
+    if [ -n "$CONTROLLER_FC_USB_DEVICE" ]; then
+        cat >> "$path" <<EOF
+[fc_usb]
+device = "${CONTROLLER_FC_USB_DEVICE}"
+baud = ${CONTROLLER_FC_USB_BAUD}
+
+EOF
+    fi
+    cat >> "$path" <<EOF
 [overlay]
-callsign = "KD3BBP"
+callsign = "KD3BBD"
 
 [controller]
 listen_port = 6000
@@ -505,8 +546,8 @@ slot_0 = { xpos = 40, ypos = 0, width = 640, height = 480, alpha = 1.0, z = 1 }
 slot_1 = { xpos = 420, ypos = 280, width = 240, height = 160, alpha = 1.0, z = 2 }
 
 [sources]
-slot_0 = 0x10
-slot_1 = ${initial_remote_source}
+slot_0 = ${initial_remote_source}
+slot_1 = 0x10
 
 EOF
     IFS=',' read -ra sender_entries <<< "$CONTROLLER_SENDERS"
@@ -615,6 +656,7 @@ Type=simple
 User=${SUDO_USER:-pi}
 WorkingDirectory=${APP_DIR}/control-plane
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=${VENV_SITE_PACKAGES}
 Environment=GST_GL_PLATFORM=egl
 Environment=GST_GL_WINDOW=gbm
 ExecStart=${EXEC_START}

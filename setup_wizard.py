@@ -110,6 +110,13 @@ def ask_controller_args() -> list[str]:
     if ask_yes_no("Rewrite /etc/arc/controller.toml if it already exists?", False):
         args.append("--force-config")
 
+    if ask_yes_no("Is FC-N connected to the Controller by USB serial instead of direct Teensy UART?", False):
+        device = ask("What USB serial device should the Controller use for FC-N?", "/dev/ttyACM0")
+        args.extend(["--fc-usb-device", device])
+        baud = ask("What baud rate should FC-N USB serial use?", "115200")
+        if baud != "115200":
+            args.extend(["--fc-usb-baud", baud])
+
     return args
 
 

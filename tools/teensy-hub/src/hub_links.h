@@ -3,7 +3,7 @@
 // HardwareSerial and is registered with the arc_router as a forwarding link.
 //
 // The data radio is NOT one of these: it is TX-only and speaks a proprietary
-// protocol, so it lives in data_radio.{h,cpp} with its own router send_fn.
+// protocol, so it lives in data_radio.{h,cpp}.
 
 #ifndef HUB_LINKS_H
 #define HUB_LINKS_H
@@ -21,7 +21,6 @@ enum HubLinkId {
     HUB_LINK_SPOKE5,
     HUB_LINK_SPOKE6,
     HUB_LINK_SPOKE7,
-    HUB_LINK_SPOKE8,
     HUB_LINK_COUNT
 };
 
@@ -30,10 +29,15 @@ struct HubLink {
     HardwareSerial* serial;
     uint8_t         rx[ARC_MAX_ENCODED_SIZE + 4];
     size_t          rx_len;
+    uint8_t         non_arc[ARC_MAX_ENCODED_SIZE + 4];
+    size_t          non_arc_len;
+    uint32_t        last_rx_byte_ms;
     uint32_t        last_rx_ms;
     uint32_t        tx_count;
     uint32_t        rx_count;
 };
+
+static constexpr int HUB_LINK_READ_NON_ARC = -1000;
 
 // Open all spoke UARTs at the configured baud.
 void hub_links_begin(void);
@@ -46,9 +50,13 @@ bool hub_links_online(HubLinkId id, uint32_t now_ms, uint32_t timeout_ms);
 
 // Pull COBS bytes off one link's UART. When a full frame is decoded it is
 // written into `out` (capacity `cap`) and the decoded length is returned.
-// Returns 0 when no complete frame is ready yet, or a negative arc_result_t
-// on a COBS error (the partial buffer is reset in that case).
+// Returns 0 when no complete frame is ready yet. Returns
+// HUB_LINK_READ_NON_ARC when bytes arrived that are not a valid ARC packet;
+// call hub_link_take_non_arc() to retrieve them.
 int hub_link_read(HubLinkId id, uint8_t* out, size_t cap, uint32_t now_ms);
+
+// Copy and clear the most recent non-ARC bytes captured for this link.
+size_t hub_link_take_non_arc(HubLinkId id, uint8_t* out, size_t cap);
 
 // arc_router link send_fn: COBS-encode `frame` and write it to the UART that
 // `user` (a HubLink*) points at.

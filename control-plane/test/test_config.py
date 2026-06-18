@@ -1,4 +1,4 @@
-import tempfile
+﻿import tempfile
 import textwrap
 import unittest
 from pathlib import Path
@@ -8,6 +8,7 @@ from arc.config import (
     ConfigError,
     ControllerConfig,
     ControllerVideoConfig,
+    HitlPeerEntry,
     SenderConfig,
     load_controller_config,
     load_sender_config,
@@ -35,7 +36,7 @@ class ControllerConfigTests(unittest.TestCase):
             baud = 115200
 
             [overlay]
-            callsign = "KD3BBP"
+            callsign = "KD3BBD"
 
             [controller]
             listen_port = 6000
@@ -58,6 +59,11 @@ class ControllerConfigTests(unittest.TestCase):
             name = "ground"
             ip = "10.42.0.15"
 
+            [[hitl_peers]]
+            id = 0x70
+            name = "laptop-hitl"
+            ip = "10.42.0.50"
+
             [layouts.split]
             slot_0 = { xpos = 0, ypos = 0, width = 640, height = 480, alpha = 1.0 }
             slot_1 = { xpos = 640, ypos = 0, width = 640, height = 480, alpha = 1.0 }
@@ -70,13 +76,18 @@ class ControllerConfigTests(unittest.TestCase):
         cfg = load_controller_config(path)
         self.assertIsInstance(cfg, ControllerConfig)
         self.assertEqual(cfg.addr, p.ADDR_CONTROLLER)
-        self.assertEqual(cfg.callsign, "KD3BBP")
+        self.assertEqual(cfg.callsign, "KD3BBD")
         self.assertEqual(cfg.uart.device, "/dev/serial0")
+        self.assertIsNone(cfg.fc_usb)
         self.assertEqual(cfg.listen_port, 6000)
         self.assertEqual(len(cfg.senders), 2)
         self.assertEqual(cfg.senders[0].addr, 0x12)
         self.assertEqual(cfg.senders[0].paired_fc, 0x03)
         self.assertIsNone(cfg.senders[1].paired_fc)
+        self.assertEqual(
+            cfg.hitl_peers,
+            (HitlPeerEntry(addr=0x70, name="laptop-hitl", ip="10.42.0.50"),),
+        )
         self.assertIn("split", cfg.layouts)
         self.assertEqual(cfg.initial_sources, (p.ADDR_CONTROLLER, p.ADDR_SENDER_AIRBRAKE))
         self.assertIsInstance(cfg.video, ControllerVideoConfig)
@@ -96,7 +107,7 @@ class ControllerConfigTests(unittest.TestCase):
             device = "/dev/serial0"
 
             [overlay]
-            callsign = "KD3BBP"
+            callsign = "KD3BBD"
 
             [video]
             local_camera_rotation = 90
@@ -104,6 +115,28 @@ class ControllerConfigTests(unittest.TestCase):
         )
         cfg = load_controller_config(path)
         self.assertEqual(cfg.video.local_camera_rotation, 90)
+
+    def test_controller_fc_usb_link_loads(self):
+        path = write_toml(
+            """
+            [node]
+            address = 0x10
+
+            [uart]
+            device = "/dev/serial0"
+
+            [fc_usb]
+            device = "/dev/ttyACM0"
+            baud = 57600
+
+            [overlay]
+            callsign = "KD3BBD"
+            """
+        )
+        cfg = load_controller_config(path)
+        self.assertIsNotNone(cfg.fc_usb)
+        self.assertEqual(cfg.fc_usb.device, "/dev/ttyACM0")
+        self.assertEqual(cfg.fc_usb.baud, 57600)
 
     def test_controller_local_camera_rotation_rejects_off_axis(self):
         path = write_toml(
@@ -115,7 +148,7 @@ class ControllerConfigTests(unittest.TestCase):
             device = "/dev/serial0"
 
             [overlay]
-            callsign = "KD3BBP"
+            callsign = "KD3BBD"
 
             [video]
             local_camera_rotation = 45
@@ -134,7 +167,7 @@ class ControllerConfigTests(unittest.TestCase):
             device = "/dev/serial0"
 
             [overlay]
-            callsign = "KD3BBP"
+            callsign = "KD3BBD"
             """
         )
         cfg = load_controller_config(path)
@@ -154,7 +187,7 @@ class ControllerConfigTests(unittest.TestCase):
             device = "/dev/serial0"
 
             [overlay]
-            callsign = "KD3BBP"
+            callsign = "KD3BBD"
             """
         )
         with self.assertRaises(ConfigError):
@@ -166,7 +199,7 @@ class ControllerConfigTests(unittest.TestCase):
             [node]
             address = 0x10
             [overlay]
-            callsign = "KD3BBP"
+            callsign = "KD3BBD"
             """
         )
         with self.assertRaises(ConfigError):

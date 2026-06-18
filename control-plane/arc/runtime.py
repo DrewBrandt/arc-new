@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from collections.abc import Awaitable, Callable
 
 from arc_protocol import protocol
@@ -19,6 +20,7 @@ from arc.uart_link import QueuedUartLink
 
 
 FrameSink = Callable[[protocol.Frame, float], None]
+log = logging.getLogger(__name__)
 
 
 def now() -> float:
@@ -51,15 +53,36 @@ async def run_uart_link(
 ) -> None:
     """Open a UART, hold it, reconnect on failure until stop_event is set."""
 
+    last_open_error = ""
     while True:
         if stop_event is not None and stop_event.is_set():
             return
         try:
             reader, writer = await open_serial_link(device, baud)
-        except OSError:
+        except OSError as exc:
+            open_error = f"{type(exc).__name__}: {exc}"
+            if open_error != last_open_error:
+                log.warning(
+                    "UART open failed for %s at %d baud: %s",
+                    device,
+                    baud,
+                    open_error,
+                )
+                last_open_error = open_error
             await asyncio.sleep(reconnect_delay_s)
             continue
-        await link.run_connected(reader, writer)
+        last_open_error = ""
+        log.info("UART connected to %s at %d baud", device, baud)
+        try:
+            await link.run_connected(reader, writer)
+        except Exception:
+            log.exception("UART link crashed for %s", device)
+        if not link._stopping:
+            log.warning(
+                "UART disconnected from %s: %s",
+                device,
+                link.last_disconnect_reason or "unknown reason",
+            )
         if stop_event is not None and stop_event.is_set():
             return
         await asyncio.sleep(reconnect_delay_s)

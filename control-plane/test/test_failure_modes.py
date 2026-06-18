@@ -1,4 +1,4 @@
-"""Failure-mode regression tests, mirroring design doc Section 12.4.
+﻿"""Failure-mode regression tests, mirroring design doc Section 12.4.
 
 Each scenario the doc lists is exercised end-to-end in-memory. Where the
 implementation has consciously diverged from the doc, the test pins the
@@ -164,7 +164,7 @@ class FcNUartSilentFailureMode(unittest.TestCase):
         # FC-N applies a layout via the pipeline directly (simulating an
         # earlier SET_LAYOUT) so we have something concrete to watch.
         pipeline.set_layout("split")
-        pipeline.set_overlay("KD3BBP / BOOST")
+        pipeline.set_overlay("KD3BBD / BOOST")
         prior_layouts = list(pipeline.layouts)
         prior_overlays = list(pipeline.overlays)
         prior_sources = list(pipeline.source_calls)

@@ -1,4 +1,4 @@
-import unittest
+﻿import unittest
 
 from arc_protocol import messages as m
 from arc_protocol import protocol as p
@@ -44,9 +44,9 @@ class MessageTests(unittest.TestCase):
         self.assertEqual(m.SetSource.decode(msg.encode()), msg)
 
     def test_fc_video_set_overlay_round_trip(self):
-        msg = m.SetOverlay(text="KD3BBP flight")
+        msg = m.SetOverlay(text="KD3BBD flight")
 
-        self.assertEqual(msg.encode(), b"KD3BBP flight\x00")
+        self.assertEqual(msg.encode(), b"KD3BBD flight\x00")
         self.assertEqual(m.SetOverlay.decode(msg.encode()), msg)
 
     def test_fc_video_status_report_round_trip(self):
@@ -245,7 +245,7 @@ class MessageTests(unittest.TestCase):
 
     def test_overlay_validation(self):
         with self.assertRaises(m.MessageError):
-            m.SetOverlay.decode(b"KD3BBP")
+            m.SetOverlay.decode(b"KD3BBD")
 
         with self.assertRaises(m.MessageError):
             m.SetOverlay.decode(b"\xff\x00")

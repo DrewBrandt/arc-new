@@ -8,8 +8,9 @@ Inside the nosecone, a **Teensy 4.1 hub** (`teensy-hub`, address `0x05`) is the
 central router: the FC, the ARCH-Mega power board, and the two rocket radios
 are all spokes on it. The Pi 5 Controller (`pi-5-nose`, `0x10`) composites
 video and is the WiFi gateway for everything off the nosecone. Camera Senders
-are named by location: `down` (`0x11`, nose cam pointing down), `airbrake`
-(`0x12`), `payload` (`0x13`), and `ground` (`0x15`). The two rocket radios are
+use the assignable `0x11..0x19` range; the usual names are `down` (`0x11`,
+nose cam pointing down), `airbrake` (`0x12`), `payload` (`0x13`), and
+`ground` (`0x15`). The two rocket radios are
 `radio-cmd` (`0x20`, ARC command/status) and `radio-data` (`0x22`, a
 proprietary live-data downlink the hub transcodes). See the
 [`arc-protocol`](https://github.com/DrewBrandt/arc-protocol) library
@@ -55,15 +56,18 @@ address `A` arrives on link `X`, later frames addressed to `A` prefer `X` for
 10 seconds. If the learned route ages out, routing falls back to the static map
 or default route.
 
-On the Pi 5 Controller, `/dev/serial0` is named `uart-fc-n`, and each Sender TCP
-link is named by sender role (`airbrake`, `payload`, `ground`, etc.). On a
+On the Pi 5 Controller, `/dev/serial0` is named `uart-fc-n` by default, and
+Sender TCP links are created from first contact (`airbrake`, `payload`,
+`sender-0x14`, etc.). If the Controller config includes `[fc_usb]`, then
+`/dev/serial0` is instead treated as the `uart-hub` link to the Teensy hub and
+the FC-N USB serial device is named `fc-usb`. On a
 Sender Pi, the Controller TCP link is `controller` and the paired FC UART is
 `uart-fc`. Broadcast frames are delivered locally and forwarded to every link
 except the link they arrived on.
 
 This means the bench path can be forgiving: a node can announce itself with a
 heartbeat/status frame first, and the Pi will know which link to use for replies
-even if the physical port mapping changes.
+even if it was not listed in the Controller config.
 
 ## Running
 
@@ -106,6 +110,34 @@ The CLI talks to the Controller's localhost-only bench control socket
 is running. It is separate from the flight FC protocol and exists so
 hardware can be tested before FC-N is wired in.
 
+Native full-rocket HITL sample injection:
+
+```toml
+[[hitl_peers]]
+id = 0x70
+name = "laptop-hitl"
+# Optional. Omit this if the laptop IP moves around; the Controller can
+# bind the connection from the first ARC frame's source address.
+ip = "10.42.0.50"
+```
+
+With `arc-controller` running, launch the native bridge from a dev machine:
+
+```bash
+python -m arc.hitl_bridge --controller arcpi1.local --addr 0x70 --dst all --rate-hz 50
+```
+
+For a no-network smoke check:
+
+```bash
+python -m arc.hitl_bridge --dry-run
+```
+
+The bridge sends `FC_COORD` type `0x30` payloads containing the ASCII
+`HITL/...` sensor line used by `astra-support`. Sensor samples are non-reliable
+by default for timing stability; use reliable ARC frames for start/stop/reset
+controls as those are added.
+
 Sender process:
 
 ```
@@ -113,8 +145,8 @@ python -m arc.sender_main --config /etc/arc/sender.toml
 ```
 
 Remote Sender video uses deterministic Controller UDP/RTP ports derived
-from the Sender address: `down` `0x11 -> 5011`, `airbrake` `0x12 -> 5012`,
-`payload` `0x13 -> 5013`, and `ground` `0x15 -> 5015` (`0x14` is retired).
+from the Sender address: `0x11 -> 5011`, `0x12 -> 5012`, through
+`0x19 -> 5019`.
 The Sender pipeline derives its `udpsink` port from its own address; the
 Controller derives each `udpsrc` port from the selected source address.
 
@@ -131,8 +163,15 @@ address = 0x10
 device = "/dev/serial0"
 baud = 115200
 
+# Optional: use this when FC-N is connected to the Controller over USB serial
+# while /dev/serial0 goes to the Teensy hub. In this mode FC-N routes to
+# fc-usb, and hub/radio/ground traffic routes toward uart-hub.
+# [fc_usb]
+# device = "/dev/ttyACM0"
+# baud = 115200
+
 [overlay]
-callsign = "KD3BBP"
+callsign = "KD3BBD"
 
 [controller]
 listen_port = 6000
@@ -153,19 +192,22 @@ slot_0 = { xpos = 40, ypos = 0, width = 640, height = 480, alpha = 1.0, z = 1 }
 slot_1 = { xpos = 420, ypos = 280, width = 240, height = 160, alpha = 1.0, z = 2 }
 
 [sources]
-slot_0 = 0x10
-slot_1 = 0x12
+slot_0 = 0x00
+slot_1 = 0x10
 
-[[senders]]
-id = 0x12
-name = "airbrake"
-ip = "arcpi2.local"
-paired_fc = 0x03
+# Optional aliases. The Controller can discover Senders without this table.
+# [[senders]]
+# id = 0x12
+# name = "airbrake"
+# ip = "arcpi2.local"
+# paired_fc = 0x03
 ```
 
-The Controller starts in split/PIP mode. If `airbrake` is not online yet,
-slot 1 stays black; once the sender is observed on the control plane, the
-Controller starts its stream and rebuilds slot 1 to `udpsrc port=5012`.
+The Controller starts in split/PIP mode with the other camera in the primary
+slot 0 and its own camera in the PIP slot 1. Slot 0 is empty until you set a
+remote source. If a desired source such as `0x12` is not online yet, slot 0
+stays black; once that sender is observed on the control plane, the Controller
+starts its stream and switches slot 0 to `udpsrc port=5012`.
 
 The setup script generates a Zero 2 W-friendly Sender config similar to:
 
@@ -198,16 +240,23 @@ streaming even with a fake source. If a future kernel/firmware restores
 hardware encode, set `encoder = "v4l2h264enc"` and raise bitrate/framerate
 as appropriate.
 
-When adding a new Sender to an already-configured Controller, regenerate the
-Controller config with an explicit sender list:
+Sender aliases are optional. Add them only when you want friendly bench command
+names or fixed source-IP binding before the first ARC frame:
 
 ```bash
 sudo ./setup.sh controller --force-config \
   --senders "0x12:airbrake:arcpi2.local:0x03,0x13:payload:arcpi3.local:0x04"
 ```
 
-Then reboot the Controller. Without `--force-config`, setup preserves the
-existing `/etc/arc/controller.toml`.
+If FC-N is connected to the Controller over USB serial while the Pi UART goes
+to the Teensy hub, include the FC USB device:
+
+```bash
+sudo ./setup.sh controller --force-config --fc-usb-device /dev/ttyACM0
+```
+
+Without `--force-config`, setup preserves the existing
+`/etc/arc/controller.toml`.
 
 ## Hardware Notes
 

@@ -1,4 +1,4 @@
-"""Tests for the controller pipeline that don't require GStreamer.
+﻿"""Tests for the controller pipeline that don't require GStreamer.
 
 The pipeline itself only runs on a Pi with libcamera + DRM/KMS, so the
 unit tests cover the pure-Python pieces: layout parsing, the launch
@@ -27,7 +27,7 @@ def _config(
 ) -> ControllerConfig:
     return ControllerConfig(
         addr=protocol.ADDR_CONTROLLER,
-        callsign="KD3BBP",
+        callsign="KD3BBD",
         uart=UartConfig(device="/dev/null"),
         listen_port=6000,
         senders=(
@@ -71,7 +71,7 @@ class FakeElement:
 class FakeSelector(FakeElement):
     def __init__(self):
         super().__init__()
-        self.pads = {"src": FakePad(), **{f"sink_{idx}": FakePad() for idx in range(8)}}
+        self.pads = {"src": FakePad(), **{f"sink_{idx}": FakePad() for idx in range(12)}}
 
     def get_static_pad(self, name):
         return self.pads.get(name)
@@ -242,7 +242,7 @@ class ControllerPipelineTests(unittest.TestCase):
     def test_construct_without_gstreamer(self):
         # Importing and instantiating must not require gi.
         pipe = ControllerPipeline(_config({"local_full": {"slot_0": {"alpha": 1.0}}}))
-        self.assertEqual(pipe.callsign, "KD3BBP")
+        self.assertEqual(pipe.callsign, "KD3BBD")
         self.assertIsNone(pipe.current_layout)
         self.assertIn("local_full", pipe.layouts)
 
@@ -255,7 +255,7 @@ class ControllerPipelineTests(unittest.TestCase):
         )
         self.assertIn("compositor name=comp", desc)
         self.assertIn("textoverlay name=overlay", desc)
-        self.assertIn("KD3BBP", desc)  # callsign burned in
+        self.assertIn("KD3BBD", desc)  # callsign burned in
         self.assertIn("kmssink", desc)  # default analog sink
         self.assertIn("comp.sink_0", desc)
         self.assertIn("comp.sink_1", desc)
@@ -305,8 +305,8 @@ class ControllerPipelineTests(unittest.TestCase):
 
     def test_set_overlay_records_text_when_idle(self):
         pipe = ControllerPipeline(_config())
-        pipe.set_overlay("KD3BBP / TEST")
-        self.assertEqual(pipe._overlay_text, "KD3BBP / TEST")
+        pipe.set_overlay("KD3BBD / TEST")
+        self.assertEqual(pipe._overlay_text, "KD3BBD / TEST")
 
     def test_callsign_override_takes_precedence(self):
         pipe = ControllerPipeline(_config(), callsign="W1AW")
@@ -361,10 +361,12 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertIn("libcamerasrc", desc)
         self.assertIn("videotestsrc pattern=black", desc)
 
-    def test_set_source_rejects_unknown_sender_and_bad_slot(self):
+    def test_set_source_accepts_sender_range_and_rejects_bad_slot(self):
         pipe = ControllerPipeline(_config())
+        pipe.set_source(1, protocol.ADDR_SENDER_PAYLOAD)
+        self.assertEqual(pipe.slot_sources[1].addr, protocol.ADDR_SENDER_PAYLOAD)
         with self.assertRaises(PipelineError):
-            pipe.set_source(1, protocol.ADDR_SENDER_PAYLOAD)
+            pipe.set_source(1, 0x1A)
         with self.assertRaises(PipelineError):
             pipe.set_source(3, protocol.ADDR_SENDER_AIRBRAKE)
 
@@ -449,9 +451,10 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertIn("input-selector name=slot1_selector", desc)
         self.assertIn("source_00_tee", desc)
         self.assertIn("source_10_tee", desc)
+        self.assertIn("source_11_tee", desc)
         self.assertIn("source_12_tee", desc)
-        self.assertIn("slot0_selector.sink_2", desc)
-        self.assertIn("slot1_selector.sink_2", desc)
+        self.assertIn("slot0_selector.sink_3", desc)
+        self.assertIn("slot1_selector.sink_3", desc)
 
     def test_unknown_mixer_raises(self):
         with self.assertRaises(PipelineError):
@@ -473,7 +476,7 @@ class ControllerPipelineTests(unittest.TestCase):
                 _config({"split": {"slot_0": {"alpha": 1.0}, "slot_1": {"alpha": 1.0}}}),
                 switch_mode="rebuild",
             )
-            pipe.set_overlay("KD3BBP / BOOST")
+            pipe.set_overlay("KD3BBD / BOOST")
             pipe.set_layout("split")
             pipe.start()
             pipe.set_source(1, protocol.ADDR_SENDER_AIRBRAKE)
@@ -485,7 +488,7 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertIn("udpsrc port=5012", FakeGst.launched[1])
         self.assertEqual(FakeGst.pipelines[0].states, ["PLAYING", "NULL"])
         self.assertEqual(FakeGst.pipelines[1].states, ["PLAYING"])
-        self.assertEqual(FakeGst.pipelines[1].overlay.props["text"], "KD3BBP / BOOST")
+        self.assertEqual(FakeGst.pipelines[1].overlay.props["text"], "KD3BBD / BOOST")
         self.assertEqual(FakeGst.pipelines[1].comp.pads["sink_0"].props["width"], 720)
         self.assertEqual(FakeGst.pipelines[1].comp.pads["sink_0"].props["height"], 480)
         self.assertEqual(FakeGst.pipelines[1].comp.pads["sink_0"].props["zorder"], 0)
@@ -537,10 +540,10 @@ class ControllerPipelineTests(unittest.TestCase):
         self.assertEqual(FakeGst.pipelines[0].states, ["PLAYING"])
         slot0 = FakeGst.pipelines[0].selectors["slot0_selector"]
         slot1 = FakeGst.pipelines[0].selectors["slot1_selector"]
-        self.assertIs(slot0.props["active-pad"], slot0.pads["sink_2"])
+        self.assertIs(slot0.props["active-pad"], slot0.pads["sink_3"])
         self.assertIs(slot1.props["active-pad"], slot1.pads["sink_1"])
         self.assertTrue(slot0.pads["sink_0"].props["always-ok"])
-        self.assertTrue(slot1.pads["sink_2"].props["always-ok"])
+        self.assertTrue(slot1.pads["sink_3"].props["always-ok"])
 
 
 if __name__ == "__main__":

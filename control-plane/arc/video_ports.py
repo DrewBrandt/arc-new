@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from arc_protocol import protocol
+from arc.addressing import is_sender_addr
 
 
 VIDEO_PORT_PREFIX = 50
@@ -16,12 +16,7 @@ def video_port_for_sender(sender_addr: int) -> int:
     while giving every remote source its own stable receive port.
     """
 
-    if sender_addr not in {
-        protocol.ADDR_SENDER_DOWN,
-        protocol.ADDR_SENDER_AIRBRAKE,
-        protocol.ADDR_SENDER_PAYLOAD,
-        protocol.ADDR_SENDER_GROUND,
-    }:
+    if not is_sender_addr(sender_addr):
         raise ValueError(f"not an ARC Sender address: 0x{sender_addr:02x}")
     suffix = f"{sender_addr:02x}"
     if not suffix.isdecimal():

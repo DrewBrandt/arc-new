@@ -733,6 +733,8 @@ class ControllerMainAdapterTests(unittest.TestCase):
             now=1.5,
         )
         controller.start_sender(protocol.ADDR_SENDER_AIRBRAKE, now=2.0)
+        # Friendly name learned via discovery should ride along in the report.
+        controller.sender(protocol.ADDR_SENDER_AIRBRAKE).name = "airbrake-cam"
 
         status = build_fc_video_status_report(
             controller,
@@ -759,8 +761,10 @@ class ControllerMainAdapterTests(unittest.TestCase):
             | messages.FC_VIDEO_STATUS_FLAG_RECORDING,
         )
         self.assertEqual(by_addr[protocol.ADDR_SENDER_AIRBRAKE].status, report)
+        self.assertEqual(by_addr[protocol.ADDR_SENDER_AIRBRAKE].name, "airbrake-cam")
         self.assertEqual(by_addr[protocol.ADDR_SENDER_PAYLOAD].flags, 0)
         self.assertIsNone(by_addr[protocol.ADDR_SENDER_PAYLOAD].status)
+        self.assertEqual(by_addr[protocol.ADDR_SENDER_PAYLOAD].name, "")
 
     def test_get_layouts_without_controller_is_logged_no_pipeline_call(self):
         pipe = FakeControllerPipeline()
@@ -812,6 +816,34 @@ class ControllerMainAdapterTests(unittest.TestCase):
         self.assertEqual(pipe.sources_set, [(1, protocol.ADDR_SENDER_PAYLOAD)])
         self.assertEqual([f.type for f in l1_link.sent], [messages.VideoType.START_STREAM])
         self.assertEqual(c_link.sent, [])
+
+    def test_bench_command_server_resolves_discovered_sender_name(self):
+        pipe = FakeControllerPipeline()
+        link = FakeLink()
+        controller = Controller(
+            links={"payload": link},
+            sender_addrs=(protocol.ADDR_SENDER_PAYLOAD,),
+        )
+        switcher = SourceSwitcher(controller, pipe, (protocol.ADDR_SENDER_PAYLOAD,))
+        controller.health.observe(
+            _frame(
+                src=protocol.ADDR_SENDER_PAYLOAD,
+                dst=protocol.ADDR_CONTROLLER,
+                family=protocol.FAMILY_NETMGMT,
+                type=protocol.NETMGMT_HEARTBEAT,
+            ),
+            now=1.0,
+        )
+        # Name learned at runtime, not present in the static config map.
+        controller.sender(protocol.ADDR_SENDER_PAYLOAD).name = "belly-cam"
+        bench = BenchCommandServer(
+            pipe, switcher, ["split"], {}, controller=controller
+        )
+
+        response = bench.execute("source 0 belly-cam", now=1.0)
+
+        self.assertEqual(response, "OK source slot0 belly-cam(0x13)")
+        self.assertEqual(switcher.sources[0], protocol.ADDR_SENDER_PAYLOAD)
 
     def test_bench_command_server_sets_layout_by_name_and_index(self):
         pipe = FakeControllerPipeline()

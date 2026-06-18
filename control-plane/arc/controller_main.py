@@ -339,6 +339,7 @@ def build_fc_video_status_report(
                 addr=addr,
                 flags=flags,
                 status=link.last_status.report if link and link.last_status else None,
+                name=link.name if link and link.name else "",
             )
         )
 
@@ -562,6 +563,7 @@ async def run(
         {s.name: s.addr for s in cfg.senders},
         host=bench_host,
         port=bench_port,
+        controller=controller,
     )
 
     # Build links: serial ARC links, HITL peers from config, and video Senders

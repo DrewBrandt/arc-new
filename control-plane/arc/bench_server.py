@@ -41,11 +41,16 @@ class BenchCommandServer:
         host: str = BENCH_CONTROL_HOST,
         port: int = BENCH_CONTROL_PORT,
         now_fn: Callable[[], float] | None = None,
+        controller=None,
     ) -> None:
         self.pipeline = pipeline
         self.source_switcher = source_switcher
         self.layout_names = layout_names
         self.sender_names = {k.lower(): v for k, v in sender_names.items()}
+        # Optional Controller: lets the bench resolve and display names that
+        # were discovered at runtime (via VIDEO INFO_REPORT) rather than only
+        # the static aliases from config.
+        self.controller = controller
         self.host = host
         self.port = port
         self._now_fn = now_fn or runtime.now
@@ -231,14 +236,25 @@ class BenchCommandServer:
             raise ValueError(f"slot {slot} out of range")
         return slot
 
+    def _live_sender_names(self) -> dict[str, int]:
+        """Static config aliases plus any names discovered at runtime."""
+
+        names = dict(self.sender_names)
+        if self.controller is not None:
+            for addr, link in self.controller.senders.items():
+                if link.name:
+                    names[link.name.lower()] = addr
+        return names
+
     def _parse_source(self, value: str) -> int:
         normalized = value.lower()
         if normalized in ("empty", "off", "none", "black", "0"):
             return EMPTY_SOURCE
         if normalized in ("local", "controller", "camera", "pi-5-nose", "main-tube"):
             return LOCAL_SOURCE
-        if normalized in self.sender_names:
-            return self.sender_names[normalized]
+        sender_names = self._live_sender_names()
+        if normalized in sender_names:
+            return sender_names[normalized]
         try:
             source = int(value, 0)
         except ValueError as exc:
@@ -252,7 +268,7 @@ class BenchCommandServer:
             return "empty"
         if source == LOCAL_SOURCE:
             return "local"
-        for name, addr in self.sender_names.items():
+        for name, addr in self._live_sender_names().items():
             if addr == source:
                 return f"{name}(0x{source:02x})"
         return f"0x{source:02x}"

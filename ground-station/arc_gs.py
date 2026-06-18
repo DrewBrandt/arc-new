@@ -344,7 +344,10 @@ def describe_fc_video_status(status: ControllerVideoStatus) -> str:
         "senders:",
     ]
     for sender in status.senders:
-        parts = [format_addr(sender.addr), sender_flags(sender.flags)]
+        label = format_addr(sender.addr)
+        if sender.name:
+            label += f" {sender.name}"
+        parts = [label, sender_flags(sender.flags)]
         if sender.status is not None:
             report = sender.status
             parts.append(

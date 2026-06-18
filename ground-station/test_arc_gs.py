@@ -266,6 +266,7 @@ class GroundStationProtocolTests(unittest.IsolatedAsyncioTestCase):
                         tx_frames=9,
                         dropped_frames=1,
                     ),
+                    name="airbrake-cam",
                 ),
                 arc_gs.SenderVideoSnapshot(
                     addr=protocol.ADDR_SENDER_PAYLOAD,
@@ -292,6 +293,8 @@ class GroundStationProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("desired=slot0=Pi Controller", detail)
         self.assertIn("active=slot0=Pi Controller", detail)
         self.assertIn("connected=Airbrake Sender", detail)
+        # Discovered friendly name is shown beside the address.
+        self.assertIn("Airbrake Sender (0x12) airbrake-cam", detail)
         self.assertIn("Payload Sender (0x13) | offline | video=no-report", detail)
 
 

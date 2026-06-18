@@ -7,8 +7,11 @@ from dataclasses import dataclass
 from arc_protocol import messages, protocol
 
 
-MAGIC = b"FVS1"
-SENDER_STATUS_LEN = 13
+# FVS2 adds a per-sender friendly name (length-prefixed UTF-8) after the
+# fixed status block. The magic bump means an older FVS1 decoder rejects the
+# payload outright instead of mis-parsing the trailing name bytes.
+MAGIC = b"FVS2"
+SENDER_FIXED_LEN = 13  # addr + flags + has_status + 10-byte status
 
 
 @dataclass(frozen=True)
@@ -16,6 +19,7 @@ class SenderVideoSnapshot:
     addr: int
     flags: int
     status: messages.StatusReport | None = None
+    name: str = ""
 
 
 @dataclass(frozen=True)
@@ -50,6 +54,11 @@ class ControllerVideoStatus:
             else:
                 out.append(1)
                 out.extend(sender.status.encode())
+            name = sender.name.encode("utf-8")
+            if len(name) > 0xFF:
+                raise messages.MessageError("sender name is too long")
+            out.append(len(name))
+            out.extend(name)
         if len(out) > protocol.MAX_PAYLOAD_SIZE:
             raise messages.MessageError("FC_VIDEO STATUS_REPORT exceeds max payload")
         return bytes(out)
@@ -72,13 +81,21 @@ class ControllerVideoStatus:
         sender_count, pos = _take_u8(payload, pos, "sender count")
         senders: list[SenderVideoSnapshot] = []
         for _ in range(sender_count):
-            if len(payload) < pos + SENDER_STATUS_LEN:
+            if len(payload) < pos + SENDER_FIXED_LEN:
                 raise messages.MessageError("FC_VIDEO STATUS_REPORT truncated sender")
             addr = payload[pos]
             flags = payload[pos + 1]
             has_status = payload[pos + 2]
             raw_status = payload[pos + 3 : pos + 13]
-            pos += SENDER_STATUS_LEN
+            pos += SENDER_FIXED_LEN
+            name_len, pos = _take_u8(payload, pos, "sender name length")
+            if len(payload) < pos + name_len:
+                raise messages.MessageError("FC_VIDEO STATUS_REPORT truncated sender name")
+            try:
+                name = payload[pos : pos + name_len].decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise messages.MessageError("sender name is not UTF-8") from exc
+            pos += name_len
             if flags & ~messages.FC_VIDEO_STATUS_FLAGS_MASK:
                 raise messages.MessageError(
                     f"sender flags 0x{flags:02x} include reserved bits"
@@ -86,7 +103,9 @@ class ControllerVideoStatus:
             if has_status not in (0, 1):
                 raise messages.MessageError("sender status validity must be 0 or 1")
             status = messages.StatusReport.decode(raw_status) if has_status else None
-            senders.append(SenderVideoSnapshot(addr=addr, flags=flags, status=status))
+            senders.append(
+                SenderVideoSnapshot(addr=addr, flags=flags, status=status, name=name)
+            )
         if pos != len(payload):
             raise messages.MessageError("FC_VIDEO STATUS_REPORT has trailing bytes")
         return cls(
